@@ -2,71 +2,76 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Konfigurasi Halaman
+# 1. Setup Tampilan
 st.set_page_config(page_title="Recruitment Glow-Up ✨", layout="wide")
 
-# CSS Aesthetic
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
-    [data-testid="stMetricValue"] { color: #ff7eb9 !important; }
-    .stButton>button { background-color: #ffb7ce; border-radius: 20px; color: white; width: 100%; }
+    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
+    .stButton>button { background-color: #ffb7ce; border-radius: 20px; border: none; color: white; width: 100%; height: 3em; }
     </style>
     """, unsafe_allow_html=True)
 
-# Fungsi Ambil Data
-@st.cache_data(ttl=60) # Data di-refresh setiap 60 detik
+# 2. Ambil Data (Versi Paling Aman Tanpa Nama Kolom)
+@st.cache_data(ttl=10)
 def load_data():
     sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     data = pd.read_csv(url)
-    # Hapus baris kosong
-    data = data.dropna(subset=[data.columns[0]])
+    # Buang baris yang isinya kosong semua
+    data = data.dropna(how='all').reset_index(drop=True)
     return data
 
-# Menampilkan Dashboard
 try:
     df = load_data()
     
-    # Header
-    st.title("Recruitment Squad Dashboard 🌸")
-    st.markdown("#### *Let's make magic happen!* ✨")
+    # Sidebar: Mood & Musik
+    with st.sidebar:
+        st.title("Team Vibe 💅")
+        st.select_slider("How's the energy?", options=["😴", "☕", "🫠", "🔥", "✨"])
+        st.divider()
+        st.write("🎧 **Work Beats**")
+        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqdYm90Ao9z" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
 
-    # Metrics Row
+    st.title("Recruitment Squad Dashboard 🌸")
+    st.markdown("#### *Let's make magic happen today!* ✨")
+
+    # Ambil data berdasarkan posisi kolom (BUKAN NAMA)
+    # Kolom 0 = Nama, Kolom 1 = Hired, Kolom 2 = Time to Fill
+    nama_petugas = df.iloc[:, 0]
+    angka_hired = pd.to_numeric(df.iloc[:, 1], errors='coerce').fillna(0)
+    angka_ttf = pd.to_numeric(df.iloc[:, 2], errors='coerce').fillna(0)
+
+    # Row 1: Metrics
     c1, c2, c3 = st.columns(3)
-    # Gunakan nama kolom sesuai Sheets: Nama, Hired, Time to Fill
     with c1:
-        total = df['Hired'].astype(float).sum()
-        st.metric("Total Hired 🏆", f"{int(total)}")
+        st.metric("Total Hired 🏆", f"{int(angka_hired.sum())}")
     with c2:
-        avg = df['Time to Fill'].astype(float).mean()
-        st.metric("Avg. Time to Fill ⏱️", f"{avg:.1f} Days")
+        st.metric("Avg. Time to Fill ⏱️", f"{angka_ttf.mean():.1f} Days")
     with c3:
         st.metric("Team Happiness 💌", "4.9/5.0")
 
     st.divider()
 
-    # Data Row
+    # Row 2: Leaderboard & Grafik
     left, right = st.columns([1, 1.5])
     with left:
         st.subheader("Leaderboard 👑")
-        st.dataframe(df, hide_index=True, use_container_width=True)
+        st.dataframe(df, hide_index=True)
         if st.button("Celebrate Wins! 🥳"):
             st.balloons()
 
     with right:
         st.subheader("Performance Analysis 📈")
-        fig = px.bar(df, x='Nama', y='Hired', color_discrete_sequence=['#ffb7ce'], template="plotly_white")
+        # Bikin dataframe bersih untuk grafik
+        chart_data = pd.DataFrame({
+            'Nama': nama_petugas,
+            'Hired': angka_hired
+        })
+        fig = px.bar(chart_data, x='Nama', y='Hired', color_discrete_sequence=['#ffb7ce'], template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
 
-    # Sidebar
-    with st.sidebar:
-        st.title("Team Vibe 💅")
-        st.select_slider("Energy", options=["😴", "☕", "🫠", "🔥", "✨"])
-        st.divider()
-        st.write("🎧 **Focus Beats**")
-        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqdYmS908pE" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
-
 except Exception as e:
-    st.error("✨ Sedang sinkronisasi data... ✨")
-    st.write("Pastikan judul kolom di Google Sheets Anda tepat: **Nama**, **Hired**, **Time to Fill** (huruf besar-kecil harus sama).")
+    st.error("✨ Menunggu Data... ✨")
+    st.write(f"Saran: Cek apakah Google Sheets sudah di-Share ke 'Anyone with link'.")
