@@ -3,31 +3,22 @@ import pandas as pd
 import plotly.express as px
 
 # 1. Setup Halaman
-st.set_page_config(page_title="Recruitment Hall of Fame ✨", layout="wide")
+st.set_page_config(page_title="Recruitment Performance Detail ✨", layout="wide")
 
-# CSS Aesthetic untuk Kartu Ranking
+# CSS Aesthetic
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
     [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 28px; font-weight: bold; }
     .rank-card {
-        background: white;
-        border-radius: 20px;
-        padding: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        text-align: center;
-        border: 2px solid #ffdee9;
+        background: white; border-radius: 20px; padding: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; border: 2px solid #ffdee9;
     }
     .rank-img {
-        border-radius: 50%;
-        width: 110px;
-        height: 110px;
-        object-fit: cover;
-        border: 4px solid #ffb7ce;
+        border-radius: 50%; width: 100px; height: 100px;
+        object-fit: cover; border: 3px solid #ffb7ce;
     }
-    .gold { border: 4px solid #ffd700 !important; }
-    .highlight-name { font-size: 20px; font-weight: bold; color: #4a4a4a; margin-top: 10px; }
-    .highlight-total { font-size: 24px; color: #ff7eb9; font-weight: bold; }
+    .stDataFrame { border-radius: 15px; overflow: hidden; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -48,70 +39,55 @@ def clean_val(val):
 try:
     df = load_data()
     
-    # Sidebar Filter
+    # Sidebar
     with st.sidebar:
-        st.title("Settings ⚙️")
+        st.title("Admin Filter ⚙️")
         pilih_bulan = st.selectbox("📅 Pilih Bulan", df['bulan'].unique())
         st.divider()
-        pilih_kpi = st.selectbox("📊 Cek Detail KPI", df['kpi'].unique())
+        list_kpi = df['kpi'].unique()
+        pilih_kpi = st.selectbox("📊 Analisis Grafik KPI", list_kpi)
 
-    # Data Processing
+    # Data Processing & Filtering
     df_bulan = df[df['bulan'] == pilih_bulan].copy()
     for col in ['target', 'realisasi', 'nilai']:
         if col in df_bulan.columns:
             df_bulan[col] = df_bulan[col].apply(clean_val)
+    
+    # Hitung % Achievement otomatis
+    df_bulan['% ach'] = (df_bulan['realisasi'] / df_bulan['target'] * 100).fillna(0)
 
-    st.title(f"Recruitment Hall of Fame: {pilih_bulan} 🏆")
+    st.title(f"Recruitment Squad Detail Report: {pilih_bulan} 🌸")
 
-    # --- LOGIKA RANKING BERDASARKAN TOTAL NILAI ---
-    # Menghitung rata-rata nilai per orang
-    df_rank = df_bulan.groupby('nama').agg({
-        'nilai': 'mean',
-        'foto': 'first'
-    }).reset_index().sort_values(by='nilai', ascending=False).reset_index(drop=True)
-
-    # Menampilkan Top 3 Visual
-    st.subheader("Our Top Performers ✨")
+    # --- TOP 3 RANKING ---
+    df_rank = df_bulan.groupby('nama').agg({'nilai': 'mean', 'foto': 'first'}).reset_index().sort_values(by='nilai', ascending=False)
+    
     cols = st.columns(3)
     medals = ["👑 Gold", "🥈 Silver", "🥉 Bronze"]
-    
     for i in range(min(3, len(df_rank))):
         user = df_rank.iloc[i]
         with cols[i]:
             img = user['foto'] if pd.notna(user['foto']) else "https://via.placeholder.com/150"
-            is_gold = "gold" if i == 0 else ""
             st.markdown(f"""
                 <div class="rank-card">
-                    <div style="font-size: 30px;">{medals[i]}</div>
-                    <img src="{img}" class="rank-img {is_gold}">
-                    <div class="highlight-name">{user['nama']}</div>
-                    <div class="highlight-total">{user['nilai']:.2f}</div>
-                    <div style="color: gray; font-size: 14px;">Average Monthly Score</div>
+                    <div style="font-size: 25px;">{medals[i]}</div>
+                    <img src="{img}" class="rank-img">
+                    <div style="font-weight:bold; font-size:18px;">{user['nama']}</div>
+                    <div style="color:#ff7eb9; font-size:20px; font-weight:bold;">★ {user['nilai']:.2f}</div>
                 </div>
             """, unsafe_allow_html=True)
 
     st.divider()
 
-    # --- ROW 2: GRAFIK & TABEL ---
-    c1, c2 = st.columns([1.5, 1])
-    
-    with c1:
-        st.subheader(f"Detail KPI: {pilih_kpi}")
-        df_chart = df_bulan[df_bulan['kpi'] == pilih_kpi]
-        fig = px.bar(df_chart, x='nama', y=['target', 'realisasi'], barmode='group',
-                     color_discrete_map={'target': '#ffdee9', 'realisasi': '#ffb7ce'},
-                     template="plotly_white", text_auto=True)
-        st.plotly_chart(fig, use_container_width=True)
+    # --- GRAFIK ANALISIS ---
+    st.subheader(f"Grafik Perbandingan: {pilih_kpi}")
+    df_chart = df_bulan[df_bulan['kpi'] == pilih_kpi]
+    fig = px.bar(df_chart, x='nama', y=['target', 'realisasi'], barmode='group',
+                 color_discrete_map={'target': '#ffdee9', 'realisasi': '#ffb7ce'},
+                 template="plotly_white", text_auto=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-    with c2:
-        st.subheader("Leaderboard List")
-        # Menampilkan ranking dalam bentuk tabel simpel
-        df_display = df_rank.copy()
-        df_display.index = df_display.index + 1
-        st.table(df_display[['nama', 'nilai']].rename(columns={'nama': 'Name', 'nilai': 'Total Score'}))
+    st.divider()
 
-    if st.button("Launch Celebration! 🥳"):
-        st.balloons()
-
-except Exception as e:
-    st.error(f"Error: {e}")
+    # --- TABEL DETAIL ALL KPI ---
+    st.subheader("📋 Detail Seluruh KPI Anak Buah")
+    st.markdown("Berikut adalah data
