@@ -2,79 +2,76 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Konfigurasi Halaman Aesthetic
+# 1. Konfigurasi Halaman & Tema Aesthetic
 st.set_page_config(page_title="Recruitment Squad Glow-Up ✨", layout="wide")
 
-# Custom CSS untuk tampilan Pastel & Gen-Z
+# Custom CSS untuk tampilan Gen-Z (Soft colors & rounded corners)
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
-    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-family: 'Inter', sans-serif; }
-    .stHeader { background-color: transparent; }
-    .card {
-        background: white;
-        padding: 20px;
+    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
+    .stButton>button { background-color: #ffb7ce; border-radius: 20px; border: none; color: white; }
+    .recruiter-card {
+        background: rgba(255, 255, 255, 0.7);
         border-radius: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        border: 1px solid #ffe4ed;
+        padding: 15px;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+        backdrop-filter: blur(4px);
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        margin-bottom: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data dari Google Sheets
+# 2. Fungsi Load Data dari Google Sheets Anda
 def load_data():
-    # Mengubah link edit menjadi link export CSV agar bisa dibaca Pandas
+    # ID Google Sheets Anda
     sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    df = pd.read_csv(url)
-    return df
+    return pd.read_csv(url)
 
-# Load Data
 try:
     df = load_data()
-    
+
     # 3. Sidebar: Mood & Music
     with st.sidebar:
-        st.title("Team Vibe 💅")
-        st.select_slider("How's the energy?", options=["😴", "☕", "🫠", "🔥", "✨"])
+        st.header("Daily Vibe Check 💅")
+        st.select_slider("How's the energy today?", options=["😴", "☕", "🫠", "🔥", "✨"])
         st.divider()
-        st.write("🎧 **Focus Beats**")
-        # Spotify Lo-fi Playlist
-        st.components.v1.iframe("https://open.spotify.com/embed/playlist/37i9dQZF1DWWQRwui0Ex7X?utm_source=generator", height=80)
+        st.header("Work Beats 🎧")
+        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb9CidzhR" width="100%" height="152" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>', unsafe_allow_html=True)
 
-    # 4. Header & Top Metrics
+    # 4. Header
     st.title("Recruitment Squad Dashboard 🌸")
-    st.markdown("#### *Let's hit those targets, besties!* ✨")
-    
+    st.markdown("#### *Making magic happen, one hire at a time!* ✨")
+
+    # 5. Metrics (Menyesuaikan kolom Excel Anda)
+    # Asumsi: Kolom 1 = Nama, Kolom 2 = Hired, Kolom 3 = Time to Fill
     col1, col2, col3 = st.columns(3)
-    # Sesuaikan nama kolom di bawah dengan nama kolom di Excel Anda
-    total_hired = df.iloc[:, 1].sum() # Mengambil kolom ke-2 (Hired)
-    avg_ttf = df.iloc[:, 2].mean()   # Mengambil kolom ke-3 (Time to Fill)
-    
-    col1.metric("Total Hired 🏆", f"{total_hired}", "Monthly Target: 50")
-    col2.metric("Avg. Time to Fill ⏱️", f"{avg_ttf:.1f} Days", "-2 days")
-    col3.metric("Candidate Love 💌", "4.9/5.0")
+    total_hired = df.iloc[:, 1].sum()
+    avg_ttf = df.iloc[:, 2].mean()
+
+    col1.metric("Total Wins 🏆", f"{total_hired}", "+5 vs Last Month")
+    col2.metric("Avg Time to Fill ⏱️", f"{avg_ttf:.1f} Days", "-2 days")
+    col3.metric("Candidate Happiness 💌", "4.9/5.0")
 
     st.divider()
 
-    # 5. Leaderboard & Visualisasi
+    # 6. Leaderboard & Chart
     c1, c2 = st.columns([1, 2])
     
     with c1:
         st.subheader("Leaderboard 👑")
-        # Menampilkan tabel yang lebih cantik
         st.dataframe(df.iloc[:, 0:3], hide_index=True, use_container_width=True)
         if st.button("Celebrate Wins! 🥳"):
             st.balloons()
 
     with c2:
-        st.subheader("Performance Analysis 📈")
-        # Grafik batang yang estetik
-        fig = px.bar(df, x=df.columns[0], y=df.columns[1], 
-                     color_discrete_sequence=['#ffb7ce'],
-                     template="plotly_white")
-        fig.update_layout(border-radius=20)
+        st.subheader("Hiring Analysis 📈")
+        fig = px.bar(df, x=df.columns[0], y=df.columns[1], color_discrete_sequence=['#ffb7ce'])
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Waduh, koneksi ke Google Sheets gagal! Pastikan link sudah 'Public View'. Error: {e}")
+    st.error(f"Koneksi Gagal: {e}. Pastikan Google Sheets sudah 'Anyone with the link can view'.")
