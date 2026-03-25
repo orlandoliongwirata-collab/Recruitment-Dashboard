@@ -42,31 +42,7 @@ if not df.empty:
 
     with st.sidebar:
         st.title("Admin Panel ⚙️")
-        bln = st.selectbox("📅 Pilih Bulan", df[c_bln].dropna().unique())
+        bln_list = df[c_bln].dropna().unique()
+        bln = st.selectbox("📅 Pilih Bulan", bln_list)
 
-    df_b = df[df[c_bln] == bln].copy()
-    for c in ['target', 'realisasi', 'nilai']:
-        match = next((col for col in df_b.columns if c in col), None)
-        if match: df_b[match] = df_b[match].apply(clean)
-
-    st.title(f"Recruitment Report: {bln} 🌸")
-    st.divider()
-
-    if c_nam and c_nil:
-        st.subheader("Monthly Champions 👑")
-        df_r = df_b.groupby(c_nam).agg({c_nil: 'mean', c_fot: 'first'}).reset_index().sort_values(c_nil, ascending=False)
-        cols = st.columns(3)
-        meds = ["🥇 Gold", "🥈 Silver", "🥉 Bronze"]
-        # Ikon profil default jika link di Sheets salah (seperti "Clo")
-        def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-
-        for i in range(min(3, len(df_r))):
-            u = df_r.iloc[i]
-            with cols[i]:
-                pic = str(u[c_fot]) if pd.notna(u[c_fot]) and str(u[c_fot]).startswith('http') else def_img
-                st.markdown(f"""
-                    <div class="rank-card">
-                        <div style="font-size:18px">{meds[i]}</div>
-                        <img src="{pic}" class="rank-img" onerror="this.src='{def_img}'">
-                        <div style="font-weight:bold; margin-top:10px">{u[c_nam]}</div>
-                        <div style="color:#ff7eb9; font-weight:bold; font-size:20px">★ {u
+    df_b
