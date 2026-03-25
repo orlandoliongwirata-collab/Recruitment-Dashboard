@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-# 1. Konfigurasi Halaman
+# 1. Setup Halaman
 st.set_page_config(page_title="HR Executive Dashboard ✨", layout="wide")
 
 # CSS untuk Dashboard Professional
@@ -20,20 +20,20 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data (Menggunakan ID Anda)
+# 2. Fungsi Ambil Data
 @st.cache_data(ttl=5)
 def load_data():
-    # ID MILIK ANDA:
+    # ID MILIK ANDA
     sheet_id = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o" 
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid=0"
     
     try:
         data = pd.read_csv(url)
-        # Bersihkan spasi dan kecilkan huruf pada nama kolom
+        # Penting: Menghapus spasi di awal/akhir nama kolom dan kecilkan huruf
         data.columns = [str(c).strip().lower() for c in data.columns]
-        return data.dropna(subset=[data.columns[0]])
+        # Hapus baris yang benar-benar kosong
+        return data.dropna(how='all').reset_index(drop=True)
     except Exception as e:
-        st.error(f"Koneksi Gagal: {e}")
         return pd.DataFrame()
 
 def clean_val(val):
@@ -47,40 +47,14 @@ df = load_data()
 
 if not df.empty:
     try:
-        # Sidebar
+        # Menentukan nama kolom secara fleksibel (antisipasi typo di Sheets)
+        col_bulan = next((c for c in df.columns if 'bulan' in c), df.columns[0])
+        col_nama = next((c for c in df.columns if 'nama' in c), None)
+        col_nilai = next((c for c in df.columns if 'nilai' in c), None)
+        col_foto = next((c for c in df.columns if 'foto' in c), None)
+        col_kpi = next((c for c in df.columns if 'kpi' in c), None)
+
+        # Sidebar Filter
         with st.sidebar:
             st.title("Admin Panel ⚙️")
-            # Cek apakah kolom 'bulan' ada
-            col_bulan = 'bulan' if 'bulan' in df.columns else df.columns[0]
-            list_bulan = df[col_bulan].unique()
-            pilih_bulan = st.selectbox("📅 Pilih Bulan", list_bulan)
-
-        # Filter & Cleaning
-        df_bulan = df[df[col_bulan] == pilih_bulan].copy()
-        
-        # Pastikan kolom-kolom utama dibersihkan angkanya
-        for col in ['target', 'realisasi', 'nilai']:
-            if col in df_bulan.columns:
-                df_bulan[col] = df_bulan[col].apply(clean_val)
-        
-        # Hitung % Achievement
-        if 'target' in df_bulan.columns and 'realisasi' in df_bulan.columns:
-            df_bulan['% ach'] = (df_bulan['realisasi'] / df_bulan['target'] * 100).fillna(0)
-
-        st.title(f"Recruitment Report: {pilih_bulan} 🌸")
-        st.divider()
-
-        # --- RANKING FOTO ---
-        if 'nama' in df_bulan.columns and 'nilai' in df_bulan.columns:
-            st.subheader("Monthly Champions 👑")
-            df_rank = df_bulan.groupby('nama').agg({
-                'nilai': 'mean',
-                'foto': 'first' if 'foto' in df_bulan.columns else 'first'
-            }).reset_index().sort_values(by='nilai', ascending=False)
-            
-            cols = st.columns(3)
-            medals = ["🥇 Gold", "🥈 Silver", "🥉 Bronze"]
-            for i in range(min(3, len(df_rank))):
-                user = df_rank.iloc[i]
-                with cols[i]:
-                    img = user['foto'] if 'foto' in user and pd.notna(user['foto']) and str(user['foto']).startswith('http') else "
+            list_bulan = df[col_bulan].dropna().unique()
