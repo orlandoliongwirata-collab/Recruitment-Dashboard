@@ -2,48 +2,51 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Setup Tampilan
-st.set_page_config(page_title="Recruitment Glow-Up ✨", layout="wide")
+# 1. Konfigurasi Halaman Aesthetic
+st.set_page_config(page_title="Recruitment Squad Dashboard ✨", layout="wide")
 
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
     [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
     .stButton>button { background-color: #ffb7ce; border-radius: 20px; border: none; color: white; width: 100%; height: 3em; }
+    .stDataFrame { background: white; border-radius: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Ambil Data (Versi Paling Aman Tanpa Nama Kolom)
+# 2. Fungsi Ambil Data (Link Langsung ke Google Sheets Anda)
 @st.cache_data(ttl=10)
 def load_data():
+    # ID Sheet dari link yang Anda berikan sebelumnya
     sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     data = pd.read_csv(url)
-    # Buang baris yang isinya kosong semua
+    # Membersihkan data dari baris kosong
     data = data.dropna(how='all').reset_index(drop=True)
     return data
 
 try:
     df = load_data()
     
-    # Sidebar: Mood & Musik
+    # Sidebar: Mood & Music
     with st.sidebar:
         st.title("Team Vibe 💅")
         st.select_slider("How's the energy?", options=["😴", "☕", "🫠", "🔥", "✨"])
         st.divider()
         st.write("🎧 **Work Beats**")
-        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqdYm90Ao9z" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
+        # Spotify Embed (Lofi Beats)
+        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWWQRvui9Df7X" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
 
     st.title("Recruitment Squad Dashboard 🌸")
     st.markdown("#### *Let's make magic happen today!* ✨")
 
-    # Ambil data berdasarkan posisi kolom (BUKAN NAMA)
+    # Ambil data berdasarkan urutan kolom (Biar aman dari typo nama kolom)
     # Kolom 0 = Nama, Kolom 1 = Hired, Kolom 2 = Time to Fill
-    nama_petugas = df.iloc[:, 0]
+    nama_tim = df.iloc[:, 0]
     angka_hired = pd.to_numeric(df.iloc[:, 1], errors='coerce').fillna(0)
     angka_ttf = pd.to_numeric(df.iloc[:, 2], errors='coerce').fillna(0)
 
-    # Row 1: Metrics
+    # Row 1: Metrics Utama
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Total Hired 🏆", f"{int(angka_hired.sum())}")
@@ -54,24 +57,23 @@ try:
 
     st.divider()
 
-    # Row 2: Leaderboard & Grafik
+    # Row 2: Tabel & Grafik
     left, right = st.columns([1, 1.5])
     with left:
         st.subheader("Leaderboard 👑")
-        st.dataframe(df, hide_index=True)
+        st.dataframe(df, hide_index=True, use_container_width=True)
         if st.button("Celebrate Wins! 🥳"):
             st.balloons()
 
     with right:
         st.subheader("Performance Analysis 📈")
-        # Bikin dataframe bersih untuk grafik
-        chart_data = pd.DataFrame({
-            'Nama': nama_petugas,
-            'Hired': angka_hired
-        })
-        fig = px.bar(chart_data, x='Nama', y='Hired', color_discrete_sequence=['#ffb7ce'], template="plotly_white")
+        # Siapkan data khusus untuk grafik
+        chart_df = pd.DataFrame({'Recruiter': nama_tim, 'Total Hires': angka_hired})
+        fig = px.bar(chart_df, x='Recruiter', y='Total Hires', 
+                     color_discrete_sequence=['#ffb7ce'], 
+                     template="plotly_white", text_auto=True)
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error("✨ Menunggu Data... ✨")
-    st.write(f"Saran: Cek apakah Google Sheets sudah di-Share ke 'Anyone with link'.")
+    st.error("✨ Menghubungkan ke Google Sheets... ✨")
+    st.info("Pastikan Google Sheets Anda sudah di-Share ke 'Anyone with the link can view'.")
