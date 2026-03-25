@@ -2,86 +2,89 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Konfigurasi Halaman & Tema Aesthetic
-st.set_page_config(page_title="Recruitment Squad Dashboard ✨", layout="wide")
+# 1. Konfigurasi Halaman
+st.set_page_config(page_title="Professional Recruitment Dashboard ✨", layout="wide")
 
-# Custom CSS untuk tampilan Gen-Z
+# CSS Custom untuk tampilan profesional namun tetap estetik
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
-    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
-    .stButton>button { 
-        background-color: #ffb7ce; border-radius: 20px; border: none; 
-        color: white; width: 100%; height: 3em; font-weight: bold; 
-    }
-    .stDataFrame { background: white; border-radius: 15px; }
+    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 28px; font-weight: bold; }
+    .stSelectbox label { color: #ff7eb9; font-weight: bold; }
+    h1, h2, h3 { color: #4a4a4a; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data (Sangat Stabil)
 @st.cache_data(ttl=5)
 def load_data():
+    # ID Sheet Anda yang terbaru
     sheet_id = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o" 
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     data = pd.read_csv(url)
-    # Membersihkan baris kosong dan spasi pada nama kolom
-    data.columns = data.columns.str.strip()
-    data = data.dropna(subset=[data.columns[0]])
-    return data
+    return data.dropna(subset=[data.columns[0]])
 
 try:
     df = load_data()
     
-    # Header
-    st.title("Recruitment Squad Dashboard 🌸")
-    st.markdown("#### *Slaying the targets, one hire at a time!* ✨")
+    # Sidebar untuk Filter
+    with st.sidebar:
+        st.title("Admin Panel ⚙️")
+        list_bulan = df['Bulan'].unique()
+        pilih_bulan = st.selectbox("📅 Pilih Bulan Laporan", list_bulan)
+        
+        st.divider()
+        list_kpi = df['KPI'].unique()
+        pilih_kpi = st.selectbox("📊 Pilih KPI untuk Grafik", list_kpi)
 
-    # Ambil Data Berdasarkan Urutan Kolom
-    # Kolom 0 = Nama, Kolom 1 = Hired, Kolom 2 = Time to Fill
-    nama_tim = df.iloc[:, 0].astype(str)
-    angka_hired = pd.to_numeric(df.iloc[:, 1], errors='coerce').fillna(0)
-    angka_ttf = pd.to_numeric(df.iloc[:, 2], errors='coerce').fillna(0)
+    # Filter Data berdasarkan bulan
+    df_bulan = df[df['Bulan'] == pilih_bulan].copy()
+    
+    # Hitung Persentase Achievement (Realisasi/Target)
+    df_bulan['% Ach'] = (pd.to_numeric(df_bulan['Realisasi'], errors='coerce') / 
+                         pd.to_numeric(df_bulan['Target'], errors='coerce') * 100).fillna(0)
 
-    # --- ROW 1: METRICS UTAMA ---
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Hired 🏆", f"{int(angka_hired.sum())}")
-    c2.metric("Avg. Time to Fill ⏱️", f"{angka_ttf.mean():.1f} Days")
-    c3.metric("Team Happiness 💌", "4.9/5.0")
+    st.title(f"Recruitment Performance Report: {pilih_bulan} 🌸")
+
+    # --- ROW 1: SUMMARY METRICS ---
+    c1, c2, c3, c4 = st.columns(4)
+    avg_score = pd.to_numeric(df_bulan['Nilai'], errors='coerce').mean()
+    total_hired_kpi = df_bulan[df_bulan['KPI'].str.contains('Fulfillment', case=False)]['Realisasi'].sum()
+    
+    c1.metric("Avg. Team Score ⭐", f"{avg_score:.2f}")
+    c2.metric("Avg. Achievement %", f"{df_bulan['% Ach'].mean():.1f}%")
+    c3.metric("Team Members", f"{len(df_bulan['Nama'].unique())}")
+    c4.metric("Status", "🟢 On Track")
 
     st.divider()
 
-    # --- ROW 2: TABEL & GRAFIK ---
-    left, right = st.columns([1, 1.5])
-    
-    with left:
-        st.subheader("Leaderboard 👑")
-        st.dataframe(df, hide_index=True, use_container_width=True)
-        if st.button("Celebrate Wins! 🥳"):
-            st.balloons()
+    # --- ROW 2: GRAFIK PERFORMANCE ---
+    col_left, col_right = st.columns(2)
 
-    with right:
-        st.subheader("Performance Analysis 📈")
-        # Buat grafik tanpa ribet
-        fig = px.bar(
-            x=nama_tim, 
-            y=angka_hired, 
-            labels={'x': 'Recruiter', 'y': 'Hires'},
-            color_discrete_sequence=['#ffb7ce'], 
-            template="plotly_white", 
-            text=angka_hired
-        )
-        fig.update_traces(textposition='outside')
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
+    with col_left:
+        st.subheader(f"Target vs Realisasi: {pilih_kpi}")
+        df_kpi_filtered = df_bulan[df_bulan['KPI'] == pilih_kpi]
+        fig_bar = px.bar(df_kpi_filtered, x='Nama', y=['Target', 'Realisasi'], 
+                         barmode='group',
+                         color_discrete_map={'Target': '#ffdee9', 'Realisasi': '#ffb7ce'},
+                         template="plotly_white")
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-    # Sidebar: Mood & Music
-    with st.sidebar:
-        st.title("Team Vibe 💅")
-        st.select_slider("Energy Check", options=["😴", "☕", "🫠", "🔥", "✨"])
-        st.divider()
-        st.write("🎧 **Focus Beats**")
-        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb99idp6R" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
+    with col_right:
+        st.subheader("Distribusi Nilai Akhir ⭐")
+        # Menghitung rata-rata nilai per orang di bulan tersebut
+        df_nilai_avg = df_bulan.groupby('Nama')['Nilai'].mean().reset_index()
+        fig_line = px.line(df_nilai_avg, x='Nama', y='Nilai', markers=True,
+                           color_discrete_sequence=['#ff7eb9'], template="plotly_white")
+        fig_line.update_layout(yaxis_range=[0, 5]) # Asumsi skala nilai 1-5
+        st.plotly_chart(fig_line, use_container_width=True)
+
+    # --- ROW 3: TABEL DETAIL ---
+    st.subheader("Data Detail Seluruh KPI")
+    st.dataframe(df_bulan[['Nama', 'KPI', 'Target', 'Realisasi', '% Ach', 'Nilai']], 
+                 use_container_width=True, hide_index=True)
+
+    if st.button("Download Monthly Summary 📑"):
+        st.success("Feature coming soon! (Data ready to be screenshotted for your Manager)")
 
 except Exception as e:
-    st.error(f"Almost there! ✨")
-    st.write("Checking connection to Google Sheets...")
+    st.error("Gagal memuat data. Periksa apakah nama kolom di Sheets sudah tepat: Bulan, Nama, KPI, Target, Realisasi, Nilai.")
