@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Setup Halaman
+# 1. Konfigurasi Halaman
 st.set_page_config(page_title="Recruitment Squad Dashboard ✨", layout="wide")
 
-# CSS Aesthetic
+# Gaya Visual
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
@@ -38,25 +38,26 @@ try:
     # Sidebar
     with st.sidebar:
         st.title("Admin Panel ⚙️")
-        pilih_bulan = st.selectbox("📅 Pilih Bulan", df['bulan'].unique())
+        list_bulan = df['bulan'].unique()
+        pilih_bulan = st.selectbox("📅 Pilih Bulan", list_bulan)
         st.divider()
         list_nama = ["Semua Nama"] + list(df['nama'].unique())
         pilih_nama = st.selectbox("👤 Filter Nama Tim", list_nama)
 
-    # Data Processing
+    # Filter & Cleaning
     df_bulan = df[df['bulan'] == pilih_bulan].copy()
     for col in ['target', 'realisasi', 'nilai']:
         if col in df_bulan.columns:
             df_bulan[col] = df_bulan[col].apply(clean_val)
+    
     df_bulan['% ach'] = (df_bulan['realisasi'] / df_bulan['target'] * 100).fillna(0)
 
-    # Filter Nama jika dipilih
     if pilih_nama != "Semua Nama":
         df_bulan = df_bulan[df_bulan['nama'] == pilih_nama]
 
     st.title(f"Recruitment Dashboard: {pilih_bulan} 🌸")
 
-    # --- TOP RANKING (Hanya muncul jika 'Semua Nama' dipilih) ---
+    # --- TOP RANKING ---
     if pilih_nama == "Semua Nama":
         st.subheader("Monthly Champions 👑")
         df_rank = df_bulan.groupby('nama').agg({'nilai': 'mean', 'foto': 'first'}).reset_index().sort_values(by='nilai', ascending=False)
@@ -65,7 +66,7 @@ try:
         for i in range(min(3, len(df_rank))):
             user = df_rank.iloc[i]
             with cols[i]:
-                img = user['foto'] if pd.notna(user['foto']) else "https://via.placeholder.com/150"
+                img = user['foto'] if pd.notna(user['foto']) and str(user['foto']).startswith('http') else "https://via.placeholder.com/150"
                 st.markdown(f"""
                     <div class="rank-card">
                         <div style="font-size: 20px;">{medals[i]}</div>
@@ -81,13 +82,34 @@ try:
 
     with tab1:
         st.subheader("KPI Achievement Chart")
-        # Grafik batang semua KPI untuk nama yang dipilih
-        fig = px.bar(df_bulan[df_bulan['kpi'] != 'Total'], 
-                     x='kpi', y=['target', 'realisasi'], 
+        # Filter agar bar 'Total' tidak mengganggu grafik jika ada
+        df_chart = df_bulan[~df_bulan['kpi'].str.contains('total', case=False, na=False)]
+        fig = px.bar(df_chart, x='kpi', y=['target', 'realisasi'], 
                      barmode='group', color_discrete_map={'target': '#ffdee9', 'realisasi': '#ffb7ce'},
                      template="plotly_white", text_auto=True)
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
-        st.subheader("Master Table")
-        df_disp = df_bulan[['nama', '
+        st.subheader("Master Table Detail")
+        # Pastikan kolom yang dipanggil ada dan string ditutup dengan benar
+        cols_to_show = ['nama', 'kpi', 'target', 'realisasi', '% ach', 'nilai']
+        df_disp = df_bulan[cols_to_show].copy()
+        df_disp.columns = ['Nama', 'Jenis KPI', 'Target', 'Realisasi', '% Achievement', 'Skor Nilai']
+        
+        st.dataframe(
+            df_disp.style.format({
+                'Target': '{:,.0f}', 
+                'Realisasi': '{:,.0f}', 
+                '% Achievement': '{:.1f}%', 
+                'Skor Nilai': '{:.2f}'
+            }).background_gradient(subset=['% Achievement'], cmap='PuRd'),
+            use_container_width=True, 
+            hide_index=True, 
+            height=450
+        )
+
+    if st.button("Celebration! 🥳"):
+        st.balloons()
+
+except Exception as e:
+    st.error(f"Terjadi kesalahan teknis: {e}")
