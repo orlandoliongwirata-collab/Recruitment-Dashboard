@@ -3,6 +3,7 @@ import pandas as pd
 
 st.set_page_config(page_title="HR Executive Dashboard ✨", layout="wide")
 
+# Gaya Visual Pro
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
@@ -31,6 +32,7 @@ def clean(v):
     try: return float(s)
     except: return 0
 
+# --- PROSES DATA ---
 df = load_data()
 
 if not df.empty:
@@ -45,4 +47,8 @@ if not df.empty:
         bln_list = df[c_bln].dropna().unique()
         bln = st.selectbox("📅 Pilih Bulan", bln_list)
 
-    df_b
+    # Filter data bulan yang dipilih
+    df_b = df[df[c_bln] == bln].copy()
+    
+    for c in ['target', 'realisasi', 'nilai']:
+        match = next((col for col in df_b.columns if c in col),
