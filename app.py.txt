@@ -2,68 +2,88 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Setup Tampilan
-st.set_page_config(page_title="Recruitment Glow-Up ✨", layout="wide")
+# 1. Konfigurasi Halaman Aesthetic
+st.set_page_config(page_title="Recruitment Squad Glow-Up ✨", layout="wide")
 
+# Custom CSS untuk tampilan Gen-Z (Pastel Pink & Glassmorphism)
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
     [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
-    .stButton>button { background-color: #ffb7ce; border-radius: 20px; border: none; color: white; width: 100%; height: 3em; }
+    .stButton>button { 
+        background-color: #ffb7ce; 
+        border-radius: 20px; 
+        border: none; 
+        color: white; 
+        width: 100%; 
+        height: 3em;
+        font-weight: bold;
+    }
+    .stDataFrame { background: white; border-radius: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Ambil Data
+# 2. Fungsi Ambil Data dari Google Sheets Anda
 def load_data():
     sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    # Membaca data langsung dari baris 1
     data = pd.read_csv(url)
-    return data.dropna(how='all')
+    # Membersihkan baris kosong jika ada
+    return data.dropna(subset=[data.columns[0]])
 
 try:
     df = load_data()
-    
-    # Sidebar: Mood & Musik
+    cols = df.columns.tolist() # Mengambil Nama, Hired, Time to Fill secara otomatis
+
+    # Sidebar: Mood & Music
     with st.sidebar:
         st.title("Team Vibe 💅")
-        st.select_slider("How's the energy?", options=["😴", "☕", "🫠", "🔥", "✨"])
+        st.select_slider("Energy Check", options=["😴", "☕", "🫠", "🔥", "✨"])
         st.divider()
-        st.write("🎧 **Focus Beats**")
-        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqd5Jicn9Ez" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
+        st.write("🎧 **Work Beats**")
+        # Spotify Lo-fi Playlist
+        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWWQRwui0Ex3X?utm_source=generator" width="100%" height="152" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>', unsafe_allow_html=True)
 
+    # Header
     st.title("Recruitment Squad Dashboard 🌸")
-    st.markdown("#### *Let's make magic happen today!* ✨")
+    st.markdown("#### *Tracking our wins and making magic happen!* ✨")
 
-    # Ambil Nama Kolom Secara Otomatis
-    cols = df.columns.tolist()
-    
     # Row 1: Metrics
     c1, c2, c3 = st.columns(3)
-    with c1:
-        total = df[cols[1]].sum()
-        st.metric("Total Hired 🏆", f"{int(total)}")
-    with c2:
-        avg = df[cols[2]].mean()
-        st.metric("Avg. Time to Fill ⏱️", f"{avg:.1f} Days")
-    with c3:
-        st.metric("Team Happiness 💌", "4.9/5.0")
+    
+    # Menghitung angka dari kolom ke-2 (Hired) dan ke-3 (Time to Fill)
+    total_hired = pd.to_numeric(df[cols[1]]).sum()
+    avg_ttf = pd.to_numeric(df[cols[2]]).mean()
+    
+    c1.metric("Total Hired 🏆", f"{int(total_hired)} Candidates")
+    c2.metric("Avg. Time to Fill ⏱️", f"{avg_ttf:.1f} Days")
+    c3.metric("Team Happiness 💌", "4.9/5.0")
 
     st.divider()
 
     # Row 2: Leaderboard & Grafik
     left, right = st.columns([1, 1.5])
+    
     with left:
         st.subheader("Leaderboard 👑")
-        st.dataframe(df, hide_index=True)
+        st.dataframe(df, hide_index=True, use_container_width=True)
         if st.button("Celebrate Wins! 🥳"):
             st.balloons()
 
     with right:
         st.subheader("Performance Analysis 📈")
-        fig = px.bar(df, x=cols[0], y=cols[1], color_discrete_sequence=['#ffb7ce'], template="plotly_white")
+        # Membuat grafik batang yang estetik
+        fig = px.bar(df, x=cols[0], y=cols[1], 
+                     color_discrete_sequence=['#ffb7ce'], 
+                     template="plotly_white",
+                     text_auto=True)
+        fig.update_layout(
+            margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error("✨ Menunggu Data Google Sheets... ✨")
-    st.info("Tips: Pastikan Baris 1 di Google Sheets adalah Judul (Nama, Hired, Time to Fill) tanpa ada sel yang di-merge.")
+    st.error(f"Waiting for data... ✨")
+    st.info("Pastikan Google Sheets Anda sudah diatur: Share -> Anyone with the link can view.")
