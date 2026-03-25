@@ -1,135 +1,115 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# 1. Konfigurasi Halaman & Tema
-st.set_page_config(page_title="Recruitment Squad Executive Report ✨", layout="wide")
+# 1. Konfigurasi Halaman & Tema Aesthetic
+st.set_page_config(page_title="Recruitment Squad Dashboard ✨", layout="wide")
 
-# Custom CSS untuk gaya Executive (Clean & Professional)
+# Custom CSS untuk gaya Gen-Z (Pastel Pink & Soft UI)
 st.markdown("""
     <style>
-    .main { background-color: #ffffff; }
-    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 28px; font-weight: bold; }
+    .main { background-color: #fdf6f9; }
+    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
     .stSelectbox label { color: #ff7eb9; font-weight: bold; }
     
-    /* Style Kartu Top 3 Ranking */
+    /* Style Kartu Top 3 */
     .rank-card {
-        background: white; border-radius: 20px; padding: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; border: 2px solid #ffdee9;
-        margin-bottom: 10px;
+        background: white;
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        text-align: center;
+        border: 2px solid #ffdee9;
     }
     .rank-img {
-        border-radius: 50%; width: 110px; height: 110px;
-        object-fit: cover; border: 4px solid #ffb7ce;
+        border-radius: 50%;
+        width: 100px;
+        height: 100px;
+        object-fit: cover;
+        border: 4px solid #ffb7ce;
+        margin-bottom: 10px;
     }
-    .highlight-name { font-size: 18px; font-weight: bold; color: #4a4a4a; margin-top: 10px; }
-    .highlight-score { color: #ff7eb9; font-size: 22px; font-weight: bold; }
+    .stDataFrame { background: white; border-radius: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data
+# 2. Fungsi Ambil Data (PASTIKAN ID SHEET ANDA BENAR)
 @st.cache_data(ttl=5)
 def load_data():
-    sheet_id = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o" 
+    sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U" # Ganti dengan ID Anda jika berbeda
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     data = pd.read_csv(url)
-    # Standarisasi kolom: kecilkan semua & hapus spasi
-    data.columns = [str(c).strip().lower() for c in data.columns]
-    return data.dropna(subset=[data.columns[0]])
+    return data.dropna(how='all').reset_index(drop=True)
 
-def clean_val(val):
-    if pd.isna(val): return 0
-    s = str(val).replace('Rp', '').replace('%', '').replace(',', '').strip()
-    try: return float(s)
-    except: return 0
-
-# --- MAIN APP ---
 try:
     df = load_data()
     
-    # Sidebar Filter
+    # Sidebar
     with st.sidebar:
-        st.title("Admin Panel ⚙️")
-        list_bulan = df['bulan'].unique()
-        pilih_bulan = st.selectbox("📅 Pilih Bulan Laporan", list_bulan)
+        st.title("Team Vibe 💅")
+        st.select_slider("Energy Check", options=["😴", "☕", "🫠", "🔥", "✨"])
         st.divider()
-        st.info("Dashboard ini menampilkan ringkasan performa tim berdasarkan pencapaian KPI bulanan.")
+        st.write("🎧 **Work Beats**")
+        st.markdown('<iframe src="http://googleusercontent.com/spotify.com/7" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
 
-    # Data Processing
-    df_bulan = df[df['bulan'] == pilih_bulan].copy()
-    for col in ['target', 'realisasi', 'nilai']:
-        if col in df_bulan.columns:
-            df_bulan[col] = df_bulan[col].apply(clean_val)
-    
-    # Hitung % Achievement Otomatis
-    df_bulan['% ach'] = (df_bulan['realisasi'] / df_bulan['target'] * 100).fillna(0)
+    st.title("Recruitment Squad Hall of Fame 🌸")
+    st.markdown("#### *Let's make magic happen today!* ✨")
 
-    st.title(f"Recruitment Monthly Performance: {pilih_bulan} 🌸")
-    st.markdown("---")
+    # Ambil Data Berdasarkan Urutan Kolom
+    # Kolom 0 = Nama, Kolom 1 = Hired, Kolom 2 = TTF, Kolom 3 = Foto
+    nama_tim = df.iloc[:, 0]
+    angka_hired = pd.to_numeric(df.iloc[:, 1], errors='coerce').fillna(0)
+    angka_ttf = pd.to_numeric(df.iloc[:, 2], errors='coerce').fillna(0)
 
-    # --- SECTION 1: TOP 3 RANKING (HALL OF FAME) ---
+    # --- TOP PERFORMERS WITH PHOTOS ---
     st.subheader("Monthly Champions 👑")
-    df_rank = df_bulan.groupby('nama').agg({'nilai': 'mean', 'foto': 'first'}).reset_index().sort_values(by='nilai', ascending=False)
     
-    cols_rank = st.columns(3)
-    medals = ["🥇 Gold Performer", "🥈 Silver Performer", "🥉 Bronze Performer"]
-    
-    for i in range(min(3, len(df_rank))):
-        user = df_rank.iloc[i]
-        with cols_rank[i]:
-            img = user['foto'] if pd.notna(user['foto']) and str(user['foto']).startswith('http') else "https://via.placeholder.com/150"
+    # Siapkan data untuk ranking foto
+    df_rank = df.copy()
+    df_rank['Hired_Clean'] =angka_hired
+    # Urutkan berdasarkan siapa yang paling banyak Hired
+    df_top3 = df_rank.sort_values(by='Hired_Clean', ascending=False).head(3)
+
+    cols_top = st.columns(3)
+    # Gunakan link foto placeholder jika link di Excel mati/kosong
+    default_img = "http://googleusercontent.com/google.com/search?q=profil_placeholder_png"
+
+    for i in range(len(df_top3)):
+        rank_data = df_top3.iloc[i]
+        with cols_top[i]:
+            # Jika kolom ke-4 (indeks 3) berisi Foto, kita ambil
+            img_url = rank_data.iloc[3] if len(rank_data) > 3 and pd.notna(rank_data.iloc[3]) else default_img
             st.markdown(f"""
                 <div class="rank-card">
-                    <div style="font-size: 18px; margin-bottom:10px;">{medals[i]}</div>
-                    <img src="{img}" class="rank-img">
-                    <div class="highlight-name">{user['nama']}</div>
-                    <div class="highlight-total">Score: <span class="highlight-score">{user['nilai']:.2f}</span></div>
+                    <img src="{img_url}" class="rank-img">
+                    <div style="font-weight:bold; font-size:18px;">{rank_data.iloc[0]}</div>
+                    <div style="color:#ff7eb9; font-size:22px; font-weight:bold;">{int(rank_data.iloc[1])} Hired</div>
+                    <div style="color:#888;">TTF: {rank_data.iloc[2]:.0f} Days</div>
                 </div>
             """, unsafe_allow_html=True)
-
+            
     st.divider()
 
-    # --- SECTION 2: EXECUTIVE SUMMARY TABLE (PIVOT) ---
-    st.subheader("📋 Summary Performa Tim (% Achievement)")
-    st.markdown("Tabel di bawah merangkum persentase pencapaian setiap personel untuk seluruh kategori KPI.")
+    # Metrics Row
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Hired 🏆", f"{int(angka_hired.sum())}")
+    c2.metric("Avg. Time to Fill ⏱️", f"{angka_ttf.mean():.1f} Days")
+    c3.metric("Team Happiness 💌", "4.9/5.0")
 
-    # PROSES PIVOT: Mengubah data memanjang menjadi menyamping (Satu nama = satu baris)
-    df_pivot = df_bulan.pivot_table(
-        index='nama', 
-        columns='kpi', 
-        values='% ach', 
-        aggfunc='mean'
-    ).fillna(0)
+    # Tabel & Grafik
+    left, right = st.columns([1, 1.5])
+    with left:
+        st.subheader("Leaderboard 👑")
+        st.dataframe(df, hide_index=True, use_container_width=True)
+        if st.button("Celebrate Wins! 🥳"):
+            st.balloons()
 
-    # Tambahkan Rata-rata Skor Nilai di paling kanan
-    df_nilai = df_bulan.groupby('nama')['nilai'].mean()
-    df_pivot['RATA-RATA SKOR ⭐'] = df_nilai
-
-    # Fungsi Pewarnaan Sel (Heatmap)
-    def color_ach(val):
-        if isinstance(val, (int, float)):
-            if val >= 100: return 'background-color: #d1f2eb; color: #145a32' # Hijau (Capai Target)
-            if val >= 80: return 'background-color: #fef9e7; color: #7d6608'  # Kuning (Hampir Capai)
-            if val > 0 and val < 80: return 'background-color: #fce4ec; color: #880e4f' # Merah Muda (Di bawah target)
-        return ''
-
-    # Tampilkan Tabel
-    st.dataframe(
-        df_pivot.style.format("{:.1f}%", subset=df_pivot.columns[:-1])
-        .format("{:.2f}", subset=['RATA-RATA SKOR ⭐'])
-        .applymap(color_ach, subset=df_pivot.columns[:-1])
-        .set_properties(**{'font-weight': 'bold'}, subset=['RATA-RATA SKOR ⭐']),
-        use_container_width=True
-    )
-
-    # --- SECTION 3: DETAIL DATA RAW ---
-    with st.expander("🔍 Lihat Detail Data Mentah (Target vs Realisasi)"):
-        df_raw = df_bulan[['nama', 'kpi', 'target', 'realisasi', 'nilai']].copy()
-        df_raw.columns = ['Nama', 'Kategori KPI', 'Target', 'Realisasi (Real)', 'Skor']
-        st.dataframe(df_raw, use_container_width=True, hide_index=True)
-
-    if st.button("Celebrate Team Wins! 🥳"):
-        st.balloons()
+    with right:
+        st.subheader("Performance Chart 📈")
+        chart_df = pd.DataFrame({'Recruiter': nama_tim, 'Total Hires': angka_hired})
+        fig = px.bar(chart_df, x='Recruiter', y='Total Hires', color_discrete_sequence=['#ffb7ce'], template="plotly_white", text_auto=True)
+        st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Terjadi kesalahan teknis dalam memuat tabel: {e}")
-    st.info("Saran: Pastikan format Google Sheets Anda tetap konsisten dengan kolom: Bulan, Nama, KPI, Target, Realisasi, Nilai, Foto.")
+    st.error("✨ Menghubungkan ke Google Sheets... ✨")
+    st.info("Pastikan Google Sheets Anda sudah di-Share ke 'Anyone with the link can view' dan kolom FOTO sudah diisi.")
