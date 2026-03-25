@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Setup Halaman Aesthetic
-st.set_page_config(page_title="Recruitment Squad Glow-Up ✨", layout="wide")
+# 1. Setup Tampilan
+st.set_page_config(page_title="Recruitment Glow-Up ✨", layout="wide")
 
 st.markdown("""
     <style>
@@ -13,65 +13,57 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data (Disesuaikan dengan baris di foto Anda)
+# 2. Ambil Data
 def load_data():
     sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    
-    # Skip 2 baris pertama karena di foto Anda baris 1 & 2 adalah judul besar
-    data = pd.read_csv(url, skiprows=2) 
-    
-    # Bersihkan data dari baris/kolom kosong
-    data = data.dropna(subset=[data.columns[0]]) # Pastikan kolom Nama tidak kosong
-    return data
+    # Membaca data langsung dari baris 1
+    data = pd.read_csv(url)
+    return data.dropna(how='all')
 
 try:
     df = load_data()
     
-    # Sidebar: Mood & Music
+    # Sidebar: Mood & Musik
     with st.sidebar:
         st.title("Team Vibe 💅")
-        st.select_slider("Energy Check", options=["😴", "☕", "🫠", "🔥", "✨"])
+        st.select_slider("How's the energy?", options=["😴", "☕", "🫠", "🔥", "✨"])
         st.divider()
-        st.write("🎧 **Work Beats**")
-        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqdYm90AoRb" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
+        st.write("🎧 **Focus Beats**")
+        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqd5Jicn9Ez" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
 
-    # Header
     st.title("Recruitment Squad Dashboard 🌸")
-    st.markdown(f"#### *Hi Besties! Let's see our magic today!* ✨")
+    st.markdown("#### *Let's make magic happen today!* ✨")
 
-    # Metrics Row
-    col1, col2, col3 = st.columns(3)
+    # Ambil Nama Kolom Secara Otomatis
+    cols = df.columns.tolist()
     
-    # Ambil angka dari kolom ke-2 (Hired) dan ke-3 (Time to Fill)
-    total_hired = pd.to_numeric(df.iloc[:, 1]).sum()
-    avg_ttf = pd.to_numeric(df.iloc[:, 2]).mean()
-    
-    col1.metric("Total Hired 🏆", f"{int(total_hired)}")
-    col2.metric("Avg. Time to Fill ⏱️", f"{avg_ttf:.1f} Days")
-    col3.metric("Team Happiness 💌", "4.9/5.0")
+    # Row 1: Metrics
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        total = df[cols[1]].sum()
+        st.metric("Total Hired 🏆", f"{int(total)}")
+    with c2:
+        avg = df[cols[2]].mean()
+        st.metric("Avg. Time to Fill ⏱️", f"{avg:.1f} Days")
+    with c3:
+        st.metric("Team Happiness 💌", "4.9/5.0")
 
     st.divider()
 
-    # Body Row
-    c1, c2 = st.columns([1, 1.5])
-    
-    with c1:
+    # Row 2: Leaderboard & Grafik
+    left, right = st.columns([1, 1.5])
+    with left:
         st.subheader("Leaderboard 👑")
-        # Tampilkan tabel (Hanya kolom Nama, Hired, dan TTF)
-        st.dataframe(df.iloc[:, 0:3], hide_index=True, use_container_width=True)
+        st.dataframe(df, hide_index=True)
         if st.button("Celebrate Wins! 🥳"):
             st.balloons()
 
-    with c2:
-        st.subheader("Performance Chart 📈")
-        fig = px.bar(df, x=df.columns[0], y=df.columns[1], 
-                     color_discrete_sequence=['#ffb7ce'], 
-                     template="plotly_white",
-                     text_auto=True)
-        fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+    with right:
+        st.subheader("Performance Analysis 📈")
+        fig = px.bar(df, x=cols[0], y=cols[1], color_discrete_sequence=['#ffb7ce'], template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.info("✨ Sedang menyambungkan ke Google Sheets... ✨")
-    st.write("Pastikan baris ke-3 di Sheets Anda adalah Judul Kolom (Nama, Hired, TTF).")
+    st.error("✨ Menunggu Data Google Sheets... ✨")
+    st.info("Tips: Pastikan Baris 1 di Google Sheets adalah Judul (Nama, Hired, Time to Fill) tanpa ada sel yang di-merge.")
