@@ -2,26 +2,27 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Setup Halaman
-st.set_page_config(page_title="Recruitment Glow-Up ✨", layout="wide")
+# 1. Setup Halaman Aesthetic
+st.set_page_config(page_title="Recruitment Squad Glow-Up ✨", layout="wide")
 
-# Custom CSS Aesthetic (Gen-Z Style)
 st.markdown("""
     <style>
     .main { background-color: #fdf6f9; }
     [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 32px; font-weight: bold; }
-    .stButton>button { background-color: #ffb7ce; border-radius: 20px; border: none; color: white; width: 100%; }
-    .stDataFrame { background: white; border-radius: 15px; }
+    .stButton>button { background-color: #ffb7ce; border-radius: 20px; border: none; color: white; width: 100%; height: 3em; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data (Versi Paling Aman)
+# 2. Fungsi Ambil Data (Disesuaikan dengan baris di foto Anda)
 def load_data():
     sheet_id = "14XHi4b6yzIA_p2AtkgsjQahPeOg16hL4DBAF9OSa39U"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    data = pd.read_csv(url)
-    # Buang baris yang isinya kosong semua (biar gak error)
-    data = data.dropna(how='all')
+    
+    # Skip 2 baris pertama karena di foto Anda baris 1 & 2 adalah judul besar
+    data = pd.read_csv(url, skiprows=2) 
+    
+    # Bersihkan data dari baris/kolom kosong
+    data = data.dropna(subset=[data.columns[0]]) # Pastikan kolom Nama tidak kosong
     return data
 
 try:
@@ -33,47 +34,44 @@ try:
         st.select_slider("Energy Check", options=["😴", "☕", "🫠", "🔥", "✨"])
         st.divider()
         st.write("🎧 **Work Beats**")
-        # Spotify Lo-fi Playlist
-        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWWQRwui0Ex7X?utm_source=generator" width="100%" height="80" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
+        st.markdown('<iframe src="https://open.spotify.com/embed/playlist/37i9dQZF1DWZqdYm90AoRb" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>', unsafe_allow_html=True)
 
     # Header
     st.title("Recruitment Squad Dashboard 🌸")
-    st.markdown("#### *Let's hit those targets, besties!* ✨")
+    st.markdown(f"#### *Hi Besties! Let's see our magic today!* ✨")
 
     # Metrics Row
     col1, col2, col3 = st.columns(3)
     
-    # Menghitung data secara otomatis (Hired ada di kolom ke-2, TTF di kolom ke-3)
-    # Jika data tidak ada, tampilkan 0
-    val_hired = df.iloc[:, 1].sum() if df.shape[1] > 1 else 0
-    val_ttf = df.iloc[:, 2].mean() if df.shape[1] > 2 else 0
+    # Ambil angka dari kolom ke-2 (Hired) dan ke-3 (Time to Fill)
+    total_hired = pd.to_numeric(df.iloc[:, 1]).sum()
+    avg_ttf = pd.to_numeric(df.iloc[:, 2]).mean()
     
-    col1.metric("Total Hired 🏆", f"{int(val_hired)}")
-    col2.metric("Avg. Time to Fill ⏱️", f"{val_ttf:.1f} Days")
+    col1.metric("Total Hired 🏆", f"{int(total_hired)}")
+    col2.metric("Avg. Time to Fill ⏱️", f"{avg_ttf:.1f} Days")
     col3.metric("Team Happiness 💌", "4.9/5.0")
 
     st.divider()
 
     # Body Row
-    c1, c2 = st.columns([1, 2])
+    c1, c2 = st.columns([1, 1.5])
     
     with c1:
         st.subheader("Leaderboard 👑")
-        # Menampilkan tabel data apa adanya
-        st.dataframe(df, hide_index=True, use_container_width=True)
+        # Tampilkan tabel (Hanya kolom Nama, Hired, dan TTF)
+        st.dataframe(df.iloc[:, 0:3], hide_index=True, use_container_width=True)
         if st.button("Celebrate Wins! 🥳"):
             st.balloons()
 
     with c2:
         st.subheader("Performance Chart 📈")
-        # Bikin grafik dari kolom 1 dan 2
-        if df.shape[1] >= 2:
-            fig = px.bar(df, x=df.columns[0], y=df.columns[1], 
-                         color_discrete_sequence=['#ffb7ce'], 
-                         template="plotly_white",
-                         text_auto=True)
-            st.plotly_chart(fig, use_container_width=True)
+        fig = px.bar(df, x=df.columns[0], y=df.columns[1], 
+                     color_discrete_sequence=['#ffb7ce'], 
+                     template="plotly_white",
+                     text_auto=True)
+        fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.warning("Sedang menyiapkan data... ✨")
-    st.info("Pastikan Google Sheets Anda sudah diatur: Share -> Anyone with the link can view.")
+    st.info("✨ Sedang menyambungkan ke Google Sheets... ✨")
+    st.write("Pastikan baris ke-3 di Sheets Anda adalah Judul Kolom (Nama, Hired, TTF).")
