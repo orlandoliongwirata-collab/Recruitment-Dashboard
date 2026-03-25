@@ -3,7 +3,7 @@ import pandas as pd
 
 st.set_page_config(page_title="HR Executive Dashboard ✨", layout="wide")
 
-# Gaya Visual Pro
+# Gaya Visual
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
@@ -23,7 +23,7 @@ def load_data():
     try:
         data = pd.read_csv(url)
         data.columns = [str(c).strip().lower() for c in data.columns]
-        return data.dropna(how='all').reset_index(drop=True)
+        return data.dropna(how='all')
     except:
         return pd.DataFrame()
 
@@ -32,23 +32,61 @@ def clean(v):
     try: return float(s)
     except: return 0
 
-# --- PROSES DATA ---
 df = load_data()
 
 if not df.empty:
-    c_bln = next((c for c in df.columns if 'bulan' in c), df.columns[0])
-    c_nam = next((c for c in df.columns if 'nama' in c), None)
-    c_nil = next((c for c in df.columns if 'nilai' in c), None)
-    c_fot = next((c for c in df.columns if 'foto' in c), None)
-    c_kpi = next((c for c in df.columns if 'kpi' in c), None)
-
+    # 1. Sidebar & Filter
     with st.sidebar:
         st.title("Admin Panel ⚙️")
-        bln_list = df[c_bln].dropna().unique()
-        bln = st.selectbox("📅 Pilih Bulan", bln_list)
+        bln = st.selectbox("📅 Pilih Bulan", df['bulan'].unique())
 
-    # Filter data bulan yang dipilih
-    df_b = df[df[c_bln] == bln].copy()
+    df_b = df[df['bulan'] == bln].copy()
     
-    for c in ['target', 'realisasi', 'nilai']:
-        match = next((col for col in df_b.columns if c in col),
+    # 2. Bersihkan Data
+    for col_key in ['target', 'realisasi', 'nilai']:
+        if col_key in df_b.columns:
+            df_b[col_key] = df_b[col_key].apply(clean)
+
+    st.title(f"Recruitment Report: {bln} 🌸")
+    st.divider()
+
+    # 3. Monthly Champions
+    st.subheader("Monthly Champions 👑")
+    df_r = df_b.groupby('nama').agg({'nilai': 'mean', 'foto': 'first'}).reset_index()
+    df_r = df_r.sort_values('nilai', ascending=False)
+    
+    cols = st.columns(3)
+    meds = ["🥇 Gold", "🥈 Silver", "🥉 Bronze"]
+    def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+
+    for i in range(min(3, len(df_r))):
+        u = df_r.iloc[i]
+        with cols[i]:
+            # Cek Link Foto
+            pic = str(u['foto']) if pd.notna(u['foto']) and str(u['foto']).startswith('http') else def_img
+            skor = f"{u['nilai']:.2f}"
+            st.markdown(f"""
+                <div class="rank-card">
+                    <div style="font-size:18px">{meds[i]}</div>
+                    <img src="{pic}" class="rank-img" onerror="this.src='{def_img}'">
+                    <div style="font-weight:bold; margin-top:10px">{u['nama']}</div>
+                    <div style="color:#ff7eb9; font-weight:bold; font-size:20px">★ {skor}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    # 4. Tabel Ringkasan
+    st.divider()
+    st.subheader("📋 Summary Performa (% Achievement)")
+    df_b['% ach'] = (df_b['realisasi'] / df_b['target'] * 100).fillna(0)
+    piv = df_b.pivot_table(index='nama', columns='kpi', values='% ach', aggfunc='mean').fillna(0)
+    piv['TOTAL SKOR ⭐'] = df_b.groupby('nama')['nilai'].mean()
+    
+    st.dataframe(piv.style.format("{:.1f}%", subset=piv.columns[:-1])
+                 .format("{:.2f}", subset=['TOTAL SKOR ⭐'])
+                 .background_gradient(cmap='PuRd', subset=['TOTAL SKOR ⭐']), 
+                 use_container_width=True)
+
+    if st.button("Celebrate! 🥳"):
+        st.balloons()
+else:
+    st.warning("Menghubungkan ke Google Sheets...")
