@@ -21,35 +21,38 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Load Data (Ditingkatkan untuk deteksi BULAN)
-@st.cache_data(ttl=1) # Cache hanya bertahan 1 detik agar data selalu baru
+# 2. Fungsi Load Data dengan Deteksi Kolom A
+@st.cache_data(ttl=1)
 def load_data():
     sid = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o"
     gid = "1942814563"
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Membaca data
+        # Kita baca tanpa melompati baris dulu untuk cek struktur
         df = pd.read_csv(url, skiprows=2)
+        
+        # Bersihkan nama kolom dari spasi dan karakter aneh
         df.columns = [str(c).strip().upper() for c in df.columns]
         
-        # Pastikan kolom BULAN bersih dari spasi
-        if 'BULAN' in df.columns:
-            df['BULAN'] = df['BULAN'].ffill().str.strip()
-        
-        # Forward Fill untuk kolom identitas lainnya
-        cols_to_fill = ['NIK', 'NAMA', 'FOTO', 'NAMA JABATAN']
+        # LOGIKA PERBAIKAN: Jika kolom pertama tidak bernama BULAN, kita paksa ganti
+        # Karena di gambar Anda Kolom A adalah BULAN
+        if df.columns[0] != 'BULAN':
+             df.rename(columns={df.columns[0]: 'BULAN'}, inplace=True)
+
+        # Forward Fill untuk mengisi baris kosong di bawah nama bulan, nama orang, dll
+        cols_to_fill = ['BULAN', 'NIK', 'NAMA', 'FOTO', 'NAMA JABATAN']
         for col in cols_to_fill:
             if col in df.columns:
                 df[col] = df[col].ffill()
         
-        # Hapus baris yang tidak perlu (Header berulang, Total, atau baris kosong)
+        # Buang baris hantu (Header berulang atau baris kosong)
         if 'KPI' in df.columns:
             df = df.dropna(subset=['KPI'])
             df = df[~df['NAMA'].str.contains('NAMA', case=False, na=False)].copy()
             df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)].copy()
         
-        # Konversi Achievement ke angka
+        # Bersihkan Achievement
         def clean_ach(x):
             s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
             try:
@@ -64,41 +67,39 @@ def load_data():
             
         return df
     except Exception as e:
-        st.error(f"Gagal memuat data: {e}")
+        st.error(f"Koneksi Gagal: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# --- LOGIKA TAMPILAN ---
+# --- TAMPILAN ---
 if not df.empty:
     with st.sidebar:
         st.title("Navigation 🧭")
         
-        # FITUR: PILIH BULAN (Wajib Muncul)
+        # Pastikan kolom BULAN ada sebelum membuat Selectbox
         if 'BULAN' in df.columns:
-            list_bulan = sorted(df['BULAN'].unique(), key=lambda x: ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'].index(x.upper()) if x.upper() in ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'] else 0)
+            # Hilangkan NaN dan ambil nilai unik
+            list_bulan = df['BULAN'].dropna().unique().tolist()
             sel_bulan = st.selectbox("📅 Pilih Bulan:", list_bulan)
             df_filtered = df[df['BULAN'] == sel_bulan].copy()
         else:
-            st.warning("Kolom 'BULAN' tidak terdeteksi di Sheet.")
+            st.error("Kolom 'BULAN' masih tidak terbaca. Pastikan sel A3 bertuliskan 'BULAN'")
             df_filtered = df.copy()
-            sel_bulan = "Januari"
+            sel_bulan = "Default"
 
         st.divider()
-        view = st.radio("Pilih Mode:", ["🌍 Team Leaderboard", "👤 Personal Detail"])
+        view = st.radio("Mode:", ["🌍 Team Leaderboard", "👤 Personal Detail"])
 
     if view == "🌍 Team Leaderboard":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
         
-        # Statistik Tim
         avg_team = df_filtered['ACH_VAL'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Rata-rata Performance Tim</h3><h1>{avg_team:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # Perhitungan Ranking
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_VAL': 'mean', 'FOTO': 'first'}).reset_index()
         df_rank = df_rank.sort_values('ACH_VAL', ascending=False).reset_index(drop=True)
         
-        # Tampilan Grid
         cols = st.columns(5)
         def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
@@ -122,7 +123,6 @@ if not df.empty:
                 """, unsafe_allow_html=True)
 
     else:
-        # Personal Detail
         st.title(f"👤 Performance Detail - {sel_bulan}")
         pilih_pic = st.selectbox("Pilih Nama PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == pilih_pic]
@@ -144,4 +144,4 @@ if not df.empty:
             st.divider()
             st.table(df_pic[['KPI', 'TARGET', 'REAL', 'ACH']])
 else:
-    st.info("Menghubungkan ke Google Sheets... Pastikan kolom 'BULAN' sudah terisi di setiap baris.")
+    st.info("Koneksi ke Sheet sedang diusahakan...")
