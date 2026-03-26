@@ -21,7 +21,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Load Data dengan Deteksi Kolom A
+# 2. Fungsi Load Data (Deteksi Kolom A sebagai BULAN)
 @st.cache_data(ttl=1)
 def load_data():
     sid = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o"
@@ -29,30 +29,26 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Kita baca tanpa melompati baris dulu untuk cek struktur
         df = pd.read_csv(url, skiprows=2)
-        
-        # Bersihkan nama kolom dari spasi dan karakter aneh
         df.columns = [str(c).strip().upper() for c in df.columns]
         
-        # LOGIKA PERBAIKAN: Jika kolom pertama tidak bernama BULAN, kita paksa ganti
-        # Karena di gambar Anda Kolom A adalah BULAN
+        # Paksa kolom pertama jadi BULAN jika namanya bergeser
         if df.columns[0] != 'BULAN':
              df.rename(columns={df.columns[0]: 'BULAN'}, inplace=True)
 
-        # Forward Fill untuk mengisi baris kosong di bawah nama bulan, nama orang, dll
+        # Isi sel kosong (Merged Cells)
         cols_to_fill = ['BULAN', 'NIK', 'NAMA', 'FOTO', 'NAMA JABATAN']
         for col in cols_to_fill:
             if col in df.columns:
                 df[col] = df[col].ffill()
         
-        # Buang baris hantu (Header berulang atau baris kosong)
+        # Pembersihan baris
         if 'KPI' in df.columns:
             df = df.dropna(subset=['KPI'])
             df = df[~df['NAMA'].str.contains('NAMA', case=False, na=False)].copy()
             df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)].copy()
         
-        # Bersihkan Achievement
+        # Konversi Achievement
         def clean_ach(x):
             s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
             try:
@@ -67,24 +63,19 @@ def load_data():
             
         return df
     except Exception as e:
-        st.error(f"Koneksi Gagal: {e}")
+        st.error(f"Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# --- TAMPILAN ---
 if not df.empty:
     with st.sidebar:
         st.title("Navigation 🧭")
-        
-        # Pastikan kolom BULAN ada sebelum membuat Selectbox
         if 'BULAN' in df.columns:
-            # Hilangkan NaN dan ambil nilai unik
             list_bulan = df['BULAN'].dropna().unique().tolist()
             sel_bulan = st.selectbox("📅 Pilih Bulan:", list_bulan)
             df_filtered = df[df['BULAN'] == sel_bulan].copy()
         else:
-            st.error("Kolom 'BULAN' masih tidak terbaca. Pastikan sel A3 bertuliskan 'BULAN'")
             df_filtered = df.copy()
             sel_bulan = "Default"
 
@@ -94,12 +85,12 @@ if not df.empty:
     if view == "🌍 Team Leaderboard":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
         
+        # Banner Rata-rata
         avg_team = df_filtered['ACH_VAL'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Rata-rata Performance Tim</h3><h1>{avg_team:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        df_rank = df_filtered.groupby('NAMA').agg({'ACH_VAL': 'mean', 'FOTO': 'first'}).reset_index()
-        df_rank = df_rank.sort_values('ACH_VAL', ascending=False).reset_index(drop=True)
-        
+        # Kartu Juara
+        df_rank = df_filtered.groupby('NAMA').agg({'ACH_VAL': 'mean', 'FOTO': 'first'}).reset_index().sort_values('ACH_VAL', ascending=False).reset_index(drop=True)
         cols = st.columns(5)
         def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
@@ -110,19 +101,25 @@ if not df.empty:
                 if 'drive.google.com' in str(pic):
                     f_id = pic.split('file/d/')[1].split('/')[0]
                     pic = f"https://drive.google.com/uc?export=view&id={f_id}"
-                
                 img_src = pic if pd.notna(pic) and str(pic).startswith('http') else def_img
                 
                 st.markdown(f"""
                     <div class="rank-card">
                         <div style="font-size:18px;">{medali}</div>
                         <img src="{img_src}" class="rank-img" onerror="this.src='{def_img}'">
-                        <div style="font-weight:bold; font-size:13px; line-height:1.2; height:32px; overflow:hidden;">{row['NAMA']}</div>
-                        <div style="color:#ff7eb9; font-weight:bold; font-size:18px; margin-top:5px;">{row['ACH_VAL']:.1f}%</div>
+                        <div style="font-weight:bold; font-size:13px; line-height:1.2; height:32px;">{row['NAMA']}</div>
+                        <div style="color:#ff7eb9; font-weight:bold; font-size:18px;">{row['ACH_VAL']:.1f}%</div>
                     </div>
                 """, unsafe_allow_html=True)
 
+        # --- TAMBAHAN: TABEL RINGKASAN DI BAWAH LEADERBOARD ---
+        st.divider()
+        st.subheader(f"📋 Ringkasan Achievement per PIC ({sel_bulan})")
+        piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='ACH_VAL', aggfunc='mean').fillna(0)
+        st.dataframe(piv.style.format("{:.1f}%"), use_container_width=True)
+
     else:
+        # Halaman Detail (Tetap ada rincian lengkapnya)
         st.title(f"👤 Performance Detail - {sel_bulan}")
         pilih_pic = st.selectbox("Pilih Nama PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == pilih_pic]
@@ -142,6 +139,7 @@ if not df.empty:
                 st.plotly_chart(fig, use_container_width=True)
             
             st.divider()
+            st.subheader("📑 Tabel Rincian Data")
             st.table(df_pic[['KPI', 'TARGET', 'REAL', 'ACH']])
 else:
     st.info("Koneksi ke Sheet sedang diusahakan...")
