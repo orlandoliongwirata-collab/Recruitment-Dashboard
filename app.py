@@ -3,9 +3,8 @@ import pandas as pd
 import plotly.express as px
 
 # 1. Konfigurasi Halaman
-st.set_page_config(page_title="Recruitment Dashboard", layout="wide")
+st.set_page_config(page_title="Recruitment Achievement Dashboard", layout="wide")
 
-# CSS untuk tampilan rapi
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
@@ -18,10 +17,14 @@ st.markdown("""
         border-radius: 50%; width: 110px; height: 110px;
         object-fit: cover; border: 4px solid #ffb7ce; margin-bottom: 10px;
     }
+    .avg-banner {
+        background: linear-gradient(90deg, #ffdee9 0%, #b5fffc 100%);
+        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 30px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Ambil Data (GID Sheet2: 1942814563)
+# 2. Fungsi Ambil Data
 @st.cache_data(ttl=1)
 def load_data():
     sid = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o"
@@ -29,52 +32,61 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Melompati 2 baris awal subjudul
         df = pd.read_csv(url, skiprows=2)
-        
-        # Bersihkan nama kolom
         df.columns = [str(c).strip().upper() for c in df.columns]
         
-        # FORWARD FILL untuk menangani merged cells (NAMA, NIK, FOTO)
+        # Forward Fill untuk merged cells
         for col in ['NIK', 'NAMA', 'FOTO', 'NAMA JABATAN']:
             if col in df.columns:
                 df[col] = df[col].ffill()
         
-        # Buang baris TOTAL dan baris tanpa KPI
+        # Filter: Buang baris TOTAL dan pastikan ada KPI
         if 'KPI' in df.columns:
             df = df.dropna(subset=['KPI'])
             df = df[df['KPI'].str.contains('TOTAL', case=False, na=False) == False].copy()
         
-        # Fungsi bersihkan angka persen
-        def clean_percent(x):
-            s = str(x).replace('%', '').replace(',', '.').strip()
+        # Fungsi khusus untuk membersihkan kolom ACH (Persentase)
+        def clean_ach(x):
+            s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
             try:
-                return float(s)
+                # Menangani angka desimal seperti 1.06 (yang berarti 106%)
+                val = float(s)
+                # Jika angka di excel berupa desimal kecil (misal 1.06), konversi ke persen asli (106)
+                return val if val > 2 else val * 100
             except:
                 return 0.0
 
-        if 'NILAI' in df.columns:
-            df['NILAI'] = df['NILAI'].apply(clean_percent)
+        if 'ACH' in df.columns:
+            df['ACH_VAL'] = df['ACH'].apply(clean_ach)
+        else:
+            # Jika kolom ACH tidak terbaca, buat dummy 0
+            df['ACH_VAL'] = 0.0
             
         return df
-    except Exception as e:
-        return pd.DataFrame() # Jika gagal, kirim data kosong
+    except:
+        return pd.DataFrame()
 
-# --- PROSES UTAMA ---
 df = load_data()
 
 if not df.empty:
     with st.sidebar:
         st.title("Menu 🧭")
-        view = st.radio("Pilih Tampilan:", ["🌍 Overview Team (%)", "👤 Detail PIC (%)"])
+        view = st.radio("Pilih Tampilan:", ["🌍 Overview Team (ACH%)", "👤 Detail PIC (ACH%)"])
 
-    # ---------------------------
-    # MODE 1: OVERVIEW TEAM
-    # ---------------------------
-    if view == "🌍 Overview Team (%)":
-        st.title("🏆 Leaderboard Pencapaian KPI (%)")
+    if view == "🌍 Overview Team (ACH%)":
+        st.title("🏆 Leaderboard Achievement Tim")
         
-        df_rank = df.groupby('NAMA').agg({'NILAI': 'mean', 'FOTO': 'first'}).reset_index().sort_values('NILAI', ascending=False)
+        # Banner Rata-rata ACH Tim
+        avg_team = df['ACH_VAL'].mean()
+        st.markdown(f"""
+            <div class="avg-banner">
+                <h2 style="margin:0; color:#4a4a4a;">Rata-rata Achievement Seluruh Tim</h2>
+                <h1 style="margin:0; color:#ff7eb9;">{avg_team:.1f}%</h1>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Grouping per Nama
+        df_rank = df.groupby('NAMA').agg({'ACH_VAL': 'mean', 'FOTO': 'first'}).reset_index().sort_values('ACH_VAL', ascending=False)
         
         cols = st.columns(len(df_rank))
         def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
@@ -93,59 +105,46 @@ if not df.empty:
                         <div style="font-size:22px;">{"🥇" if i==0 else "🥈" if i==1 else "🥉"}</div>
                         <img src="{img_src}" class="rank-img" onerror="this.src='{def_img}'">
                         <div style="font-weight:bold;">{row['NAMA']}</div>
-                        <div style="color:#ff7eb9; font-size:20px; font-weight:bold;">{row['NILAI']:.1f}%</div>
+                        <div style="color:#ff7eb9; font-size:20px; font-weight:bold;">{row['ACH_VAL']:.1f}%</div>
                     </div>
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan Nilai per Komponen KPI (%)")
-        piv = df.pivot_table(index='NAMA', columns='KPI', values='NILAI', aggfunc='mean').fillna(0)
+        st.subheader("📋 Ringkasan Achievement per KPI")
+        piv = df.pivot_table(index='NAMA', columns='KPI', values='ACH_VAL', aggfunc='mean').fillna(0)
         st.dataframe(piv.style.format("{:.1f}%"), use_container_width=True)
 
-    # ---------------------------
-    # MODE 2: DETAIL PIC (DIPERBAIKI)
-    # ---------------------------
     else:
-        st.title("👤 PIC Deep-Dive Analysis (%)")
-        
-        # Ambil daftar nama yang tersedia
+        st.title("👤 PIC Achievement Analysis")
         list_nama = df['NAMA'].unique()
-        target = st.selectbox("Pilih PIC untuk Melihat Detail:", list_nama)
-        
-        # Filter data berdasarkan nama yang dipilih
+        target = st.selectbox("Pilih PIC:", list_nama)
         df_pic = df[df['NAMA'] == target]
 
         if not df_pic.empty:
             c1, c2 = st.columns([1, 2])
-            
             with c1:
-                # Foto
                 pic_url = df_pic['FOTO'].iloc[0]
                 if 'drive.google.com' in str(pic_url):
                     f_id = pic_url.split('file/d/')[1].split('/')[0]
                     pic_url = f"https://drive.google.com/uc?export=view&id={f_id}"
                 
                 st.image(pic_url if pd.notna(pic_url) and str(pic_url).startswith('http') else "https://via.placeholder.com/150", use_container_width=True)
-                
-                # Info
-                st.metric("Rata-rata Pencapaian", f"{df_pic['NILAI'].mean():.1f}%")
-                st.write(f"**Nama:** {target}")
+                st.metric("Avg. Achievement", f"{df_pic['ACH_VAL'].mean():.1f}%")
                 st.write(f"**Jabatan:** {df_pic['NAMA JABATAN'].iloc[0]}")
 
             with c2:
-                # Grafik
-                fig = px.bar(df_pic, x='KPI', y='NILAI', text_auto='.1f',
-                             title=f"Skor KPI: {target}",
-                             color='NILAI', color_continuous_scale='PuRd')
+                fig = px.bar(df_pic, x='KPI', y='ACH_VAL', text_auto='.1f',
+                             title=f"Grafik Achievement: {target}",
+                             labels={'ACH_VAL': 'Achievement (%)'},
+                             color='ACH_VAL', color_continuous_scale='PuRd')
                 fig.update_traces(textposition='outside')
                 st.plotly_chart(fig, use_container_width=True)
 
             st.divider()
-            st.subheader("📑 Tabel Rincian Data")
-            # Tabel detail (putih bersih)
-            st.table(df_pic[['KPI', 'TARGET', 'REAL', 'NILAI']].rename(columns={'NILAI': 'NILAI (%)'}))
-        else:
-            st.warning("Data untuk PIC ini tidak ditemukan.")
+            st.subheader("📑 Tabel Rincian Achievement")
+            # Menampilkan kolom asli dari Sheet untuk detail
+            st.table(df_pic[['KPI', 'TARGET', 'REAL', 'ACH']].rename(columns={'ACH': 'ACH (%)'}))
 
+    if st.button("Celebrate! 🥳"): st.balloons()
 else:
-    st.info("Menghubungkan ke Google Sheets... Pastikan header (NIK, NAMA, dll) ada di baris 3 Sheet2.")
+    st.info("Sedang menarik data ACH dari Sheet2...")
