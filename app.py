@@ -32,6 +32,7 @@ def load_data():
         df = pd.read_csv(url, skiprows=2)
         df.columns = [str(c).strip().upper() for c in df.columns]
         
+        # Paksa kolom pertama jadi BULAN jika namanya bergeser
         if df.columns[0] != 'BULAN':
              df.rename(columns={df.columns[0]: 'BULAN'}, inplace=True)
 
@@ -129,11 +130,11 @@ if not df.empty:
                 fig = px.bar(df_pic, x='KPI', y='ACH_VAL', text_auto='.1f', color='ACH_VAL', color_continuous_scale='PuRd')
                 st.plotly_chart(fig, use_container_width=True)
             
-            # --- BAGIAN PERBAIKAN PENOMORAN TABEL ---
             st.divider()
             st.subheader(f"📑 Tabel Rincian Data: {pilih_pic}")
+            # --- PERBAIKAN PENOMORAN START DARI 1 ---
             df_tabel = df_pic[['KPI', 'TARGET', 'REAL', 'ACH']].copy()
-            df_tabel.index = range(1, len(df_tabel) + 1) # Start penomoran dari 1
+            df_tabel.index = range(1, len(df_tabel) + 1) 
             st.table(df_tabel)
 else:
     st.info("Koneksi ke Sheet sedang diusahakan...")
