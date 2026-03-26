@@ -2,120 +2,165 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Konfigurasi Halaman
+# 1. Konfigurasi Halaman & Tema Aesthetic
 st.set_page_config(page_title="Recruitment Deep-Dive Dashboard ✨", layout="wide")
 
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
+    [data-testid="stMetricValue"] { color: #ff7eb9 !important; font-size: 28px; font-weight: bold; }
+    .stSelectbox label { color: #ff7eb9; font-weight: bold; }
+    
+    /* Style Kartu Top 3 Champions */
     .rank-card {
-        background: white; border-radius: 15px; padding: 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center; border: 1px solid #eee;
+        background: white; border-radius: 20px; padding: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; border: 2px solid #ffdee9;
     }
-    .rank-img { border-radius: 50%; width: 120px; height: 120px; object-fit: cover; border: 4px solid #ffb7ce; }
-    .stMetric { background: #fdf6f9; padding: 15px; border-radius: 10px; border-left: 5px solid #ff7eb9; }
+    .rank-img {
+        border-radius: 50%; width: 100px; height: 100px;
+        object-fit: cover; border: 3px solid #ffb7ce; margin-bottom: 10px;
+    }
+    .highlight-name { font-weight: bold; font-size: 16px; color: #4a4a4a; margin-bottom: 5px; }
+    .highlight-score { color: #ff7eb9; font-size: 22px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Load Data
+# 2. Fungsi Load Data Spesifik Format Sheet2 + Kolom Foto
 @st.cache_data(ttl=1)
 def load_data():
     sid = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o"
-    url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid=0"
+    # GID Sheet2 terbaru Anda (Contoh, ganti sesuai gid Anda di URL)
+    gid_sheet2 = "1942814563" 
+    url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid_sheet2}"
+    
     try:
-        data = pd.read_csv(url)
-        data.columns = [str(c).strip().lower() for c in data.columns]
-        return data.dropna(how='all')
-    except:
+        # Kita mulai baca dari baris ke-3 (skiprows=2 untuk sub-judul kuning)
+        # Tambahkan parameter header=0 agar Python tahu baris setelah skip adalah header
+        df = pd.read_csv(url, skiprows=2, header=0)
+        
+        # Bersihkan nama kolom
+        df.columns = [str(c).strip().upper() for c in data.columns]
+        
+        # --- TEKNIK FORWARD FILL ---
+        # Tarik data NAMA, NIK, dan FOTO yang digabung (merged cells) ke bawah
+        cols_to_fill = ['NAMA', 'NIK', 'FOTO', 'NAMA JABATAN']
+        for col in cols_to_fill:
+            if col in df.columns:
+                df[col] = df[col].ffill()
+        
+        # Hapus baris 'TOTAL' agar tidak mengganggu perhitungan
+        df = df[df['KPI'] != 'TOTAL'].copy()
+        
+        # Fungsi bersihkan angka
+        def clean_num(x):
+            s = str(x).replace('Rp', '').replace('%', '').replace(',', '').strip()
+            try: return float(s)
+            except: return 0
+            
+        # Bersihkan kolom angka penting
+        df['NILAI'] = df['NILAI'].apply(clean_num)
+        df['REAL'] = df['REAL'].apply(clean_num)
+        df['TARGET'] = df['TARGET'].apply(clean_num)
+
+        return df.dropna(subset=['KPI'])
+    except Exception as e:
+        st.error(f"Error memuat data: {e}")
         return pd.DataFrame()
 
+# --- MAIN APP ---
 df = load_data()
 
 if not df.empty:
-    # --- SIDEBAR & NAVIGATION ---
+    # Sidebar Navigation
     with st.sidebar:
         st.title("Navigation 🧭")
-        view_mode = st.radio("Pilih Tampilan:", ["🌍 Overview Keseluruhan", "👤 Detail Per PIC"])
+        view_mode = st.radio("Pilih Tampilan:", ["🌍 Overview Team", "👤 Detail Per PIC"])
         st.divider()
-        bln_list = df['bulan'].unique()
-        pilih_bln = st.selectbox("📅 Pilih Bulan", bln_list)
+        st.info("💡 Data tersinkronisasi otomatis dengan Google Sheets.")
 
-    df_b = df[df['bulan'] == pilih_bln].copy()
-
-    # ==========================================
-    # MODE 1: OVERVIEW KESELURUHAN
-    # ==========================================
-    if view_mode == "🌍 Overview Keseluruhan":
-        st.title(f"Recruitment Overview: {pilih_bln} 🌸")
+    if view_mode == "🌍 Overview Team":
+        st.title("🏆 Leaderboard Recruitment Performance")
         
-        # Ranking Top 3
-        df_r = df_b.groupby('nama').agg({'nilai': 'mean', 'foto': 'first'}).reset_index().sort_values('nilai', ascending=False)
-        cols = st.columns(3)
-        meds = ["🥇 Gold", "🥈 Silver", "🥉 Bronze"]
-        def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+        # Ranking berdasarkan total nilai
+        df_rank = df.groupby('NAMA')['NILAI'].sum().reset_index().sort_values('NILAI', ascending=False)
+        
+        cols = st.columns(len(df_rank))
+        # Foto placeholder jika link di GDrive kosong
+        default_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
-        for i in range(min(3, len(df_r))):
-            u = df_r.iloc[i]
+        for i in range(len(df_rank)):
             with cols[i]:
-                pic = str(u['foto']).strip() if pd.notna(u['foto']) and str(u['foto']).startswith('http') else def_img
-                st.markdown(f'<div class="rank-card"><small>{meds[i]}</small><br><img src="{pic}" class="rank-img"><br><b>{u["nama"]}</b><br><span style="color:#ff7eb9; font-size:20px;">★ {u["nilai"]:.2f}</span></div>', unsafe_allow_html=True)
+                u = df_rank.iloc[i]
+                
+                # Ambil foto pertama yang ditemukan untuk nama ini
+                foto_raw = df[df['NAMA'] == u['NAMA']]['FOTO'].iloc[0]
+                # Jika link dari GDrive masih format /view, ubah jadi uc?export=view
+                if 'drive.google.com' in str(foto_raw):
+                     f_id = foto_raw.split('file/d/')[1].split('/')[0]
+                     foto_url = f"https://drive.google.com/uc?export=view&id={f_id}"
+                else:
+                    foto_url = default_img if pd.isna(foto_raw) else foto_raw
 
+                # Tampilan Kartu Ranking
+                st.markdown(f"""
+                    <div class="rank-card">
+                        <div style="font-size:30px">{"🥇" if i==0 else "🥈" if i==1 else "🥉"}</div>
+                        <img src="{foto_url}" class="rank-img">
+                        <div class="highlight-name">{u['NAMA']}</div>
+                        <div>Skor: <span class="highlight-score">{u['NILAI']:.2f}</span></div>
+                    </div>
+                """, unsafe_allow_html=True)
+        
         st.divider()
-        st.subheader("📋 Tabel Performa Seluruh Tim")
-        piv = df_b.pivot_table(index='nama', columns='kpi', values='nilai', aggfunc='mean').fillna(0)
+        st.subheader("📋 Ringkasan Nilai per KPI")
+        piv = df.pivot_table(index='NAMA', columns='KPI', values='NILAI', aggfunc='sum').fillna(0)
         st.dataframe(piv.style.background_gradient(cmap='PuRd'), use_container_width=True)
 
-    # ==========================================
-    # MODE 2: DETAIL PER PIC (DRILL-DOWN)
-    # ==========================================
     else:
         st.title("👤 PIC Deep-Dive Analysis")
-        nama_pic = st.selectbox("Pilih Nama PIC untuk Melihat Detail:", df_b['nama'].unique())
-        
-        # Filter data khusus PIC yang dipilih
-        df_pic = df_b[df_b['nama'] == nama_pic]
-        
-        col1, col2 = st.columns([1, 3])
-        
-        with col1:
-            # Tampilkan Foto PIC
-            pic_url = str(df_pic['foto'].iloc[0]) if pd.notna(df_pic['foto'].iloc[0]) else "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-            st.image(pic_url, caption=f"Profile {nama_pic}", use_container_width=True)
-            st.metric("Rata-rata Skor", f"{df_pic['nilai'].mean():.2f}")
+        target_nama = st.selectbox("Pilih PIC:", df['NAMA'].unique())
+        df_pic = df[df['NAMA'] == target_nama]
 
-        with col2:
-            st.subheader(f"Statistik Pencapaian: {nama_pic}")
-            # Grafik Batang Pencapaian per KPI
-            fig = px.bar(df_pic, x='kpi', y='nilai', color='kpi', 
-                         title=f"Skor KPI {nama_pic}", color_discrete_sequence=px.colors.qualitative.Pastel)
+        # Row 1: Profil & Radar Chart
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.metric("Total Skor Akhir", f"{df_pic['NILAI'].sum():.2f}")
+            # Foto Detail
+            pic_raw = df_pic['FOTO'].iloc[0]
+            if 'drive.google.com' in str(pic_raw):
+                 f_id = pic_raw.split('file/d/')[1].split('/')[0]
+                 st.image(f"https://drive.google.com/uc?export=view&id={f_id}", use_container_width=True)
+            else:
+                 st.image(pic_raw if pd.notna(pic_raw) else "https://via.placeholder.com/150", use_container_width=True)
+
+            st.write(f"**Jabatan:** {df_pic['NAMA JABATAN'].iloc[0]}")
+        
+        with c2:
+            fig = px.polar_bar(df_pic, r='NILAI', theta='KPI', 
+                               title=f"Radar Performa: {target_nama}", 
+                               color_discrete_sequence=['#ff7eb9'])
             st.plotly_chart(fig, use_container_width=True)
 
         st.divider()
+        st.subheader("📑 Analisis Spesifik SL & SR")
         
-        # Detail Analisis (Quality of Hire & Recruitment Process)
-        st.subheader("📑 Analisis Detail & Proses")
-        
-        c1, c2, c3 = st.columns(3)
-        
-        # Contoh mengambil data spesifik (Pastikan di Sheets ada KPI 'Quality of Hire' dsb)
-        qoh = df_pic[df_pic['kpi'].str.contains('Quality', case=False, na=False)]
-        ttf = df_pic[df_pic['kpi'].str.contains('Time', case=False, na=False)]
-        
-        with c1:
-            val_qoh = qoh['realisasi'].iloc[0] if not qoh.empty else 0
-            st.metric("Quality of Hire", f"{val_qoh}%")
-            st.caption("Target vs Realisasi kualitas kandidat.")
+        # Mencari data KPI yang mengandung kata 'Service Level' atau 'Success Rate'
+        sl_data = df_pic[df_pic['KPI'].str.contains('SERVICE LEVEL', case=False, na=False)]
+        sr_data = df_pic[df_pic['KPI'].str.contains('SUCCESS RATE', case=False, na=False)]
 
-        with c2:
-            # Simulasi data rekrut vs resign (Bisa diambil dari kolom lain di Sheets jika ada)
-            st.metric("Total Rekrut", "12 Orang")
-            st.write("✅ 10 Orang Lolos Probasi")
+        col_sl, col_sr = st.columns(2)
+        with col_sl:
+            if not sl_data.empty:
+                val = sl_data['REAL'].iloc[0]
+                st.info(f"**Kecepatan (SL):** {val}")
+                if "Hari" in str(sl_data['UOM'].iloc[0]):
+                    st.write("Target Baik jika < 30 Hari")
 
-        with c3:
-            st.metric("Total Resign (Early)", "2 Orang")
-            st.write("⚠️ Turnover Rate: 16%")
-
-        st.info(f"**💡 Catatan Performa:** {nama_pic} menunjukkan keunggulan pada KPI {df_pic.loc[df_pic['nilai'].idxmax(), 'kpi']}. Perlu perhatian pada proses onboarding untuk menekan angka resign dini.")
+        with col_sr:
+            if not sr_data.empty:
+                val = sr_data['REAL'].iloc[0]
+                st.success(f"**Ketepatan (SR):** {val}")
+                st.write("🎯 Target Baik jika ≤ 3 Kandidat")
 
 else:
-    st.error("Gagal memuat data.")
+    st.error("Data gagal dimuat. Cek akses Google Sheets Anda.")
