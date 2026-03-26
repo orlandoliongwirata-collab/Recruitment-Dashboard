@@ -21,7 +21,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Fungsi Load Data (Deteksi Kolom A sebagai BULAN)
+# 2. Fungsi Load Data
 @st.cache_data(ttl=1)
 def load_data():
     sid = "182IHHJRWlfcnr8acNSDIZyh-y_gAxNwo8OB12geEp7o"
@@ -32,23 +32,19 @@ def load_data():
         df = pd.read_csv(url, skiprows=2)
         df.columns = [str(c).strip().upper() for c in df.columns]
         
-        # Paksa kolom pertama jadi BULAN jika namanya bergeser
         if df.columns[0] != 'BULAN':
              df.rename(columns={df.columns[0]: 'BULAN'}, inplace=True)
 
-        # Isi sel kosong (Merged Cells)
         cols_to_fill = ['BULAN', 'NIK', 'NAMA', 'FOTO', 'NAMA JABATAN']
         for col in cols_to_fill:
             if col in df.columns:
                 df[col] = df[col].ffill()
         
-        # Pembersihan baris
         if 'KPI' in df.columns:
             df = df.dropna(subset=['KPI'])
             df = df[~df['NAMA'].str.contains('NAMA', case=False, na=False)].copy()
             df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)].copy()
         
-        # Konversi Achievement
         def clean_ach(x):
             s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
             try:
@@ -84,12 +80,9 @@ if not df.empty:
 
     if view == "🌍 Team Leaderboard":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
-        
-        # Banner Rata-rata
         avg_team = df_filtered['ACH_VAL'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Rata-rata Performance Tim</h3><h1>{avg_team:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # Kartu Juara
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_VAL': 'mean', 'FOTO': 'first'}).reset_index().sort_values('ACH_VAL', ascending=False).reset_index(drop=True)
         cols = st.columns(5)
         def_img = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
@@ -112,14 +105,12 @@ if not df.empty:
                     </div>
                 """, unsafe_allow_html=True)
 
-        # --- TAMBAHAN: TABEL RINGKASAN DI BAWAH LEADERBOARD ---
         st.divider()
         st.subheader(f"📋 Ringkasan Achievement per PIC ({sel_bulan})")
         piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='ACH_VAL', aggfunc='mean').fillna(0)
         st.dataframe(piv.style.format("{:.1f}%"), use_container_width=True)
 
     else:
-        # Halaman Detail (Tetap ada rincian lengkapnya)
         st.title(f"👤 Performance Detail - {sel_bulan}")
         pilih_pic = st.selectbox("Pilih Nama PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == pilih_pic]
@@ -138,8 +129,11 @@ if not df.empty:
                 fig = px.bar(df_pic, x='KPI', y='ACH_VAL', text_auto='.1f', color='ACH_VAL', color_continuous_scale='PuRd')
                 st.plotly_chart(fig, use_container_width=True)
             
+            # --- BAGIAN PERBAIKAN PENOMORAN TABEL ---
             st.divider()
-            st.subheader("📑 Tabel Rincian Data")
-            st.table(df_pic[['KPI', 'TARGET', 'REAL', 'ACH']])
+            st.subheader(f"📑 Tabel Rincian Data: {pilih_pic}")
+            df_tabel = df_pic[['KPI', 'TARGET', 'REAL', 'ACH']].copy()
+            df_tabel.index = range(1, len(df_tabel) + 1) # Start penomoran dari 1
+            st.table(df_tabel)
 else:
     st.info("Koneksi ke Sheet sedang diusahakan...")
