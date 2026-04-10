@@ -31,21 +31,25 @@ def load_data():
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
         
-        # Nama PIC (Kolom D / Indeks 2)
+        # Nama PIC (Kolom D / Indeks 2) ffill untuk handle merged cells
         df_raw[2] = df_raw[2].ffill() 
 
-        # Konfigurasi Kolom Bulanan (Bobot, Target, Real, Ach, Nilai)
-        # Menyesuaikan koordinat kolom J-N, O-S, T-X, Y-AC
+        # --- KOREKSI KOORDINAT KOLOM SESUAI INSTRUKSI ---
+        # Jan: J=9, K=10, L=11, M=12, N=13
+        # Feb: O=14, P=15, Q=16, R=17, S=18
+        # Mar: T=19, U=20, V=21, W=22, X=23
+        # Apr: Y=24, Z=25, AA=26, AB=27, AC=28
         month_config = {
-            'Januari':  {'bobot': 8, 'target': 9,  'real': 10, 'ach': 11, 'nilai': 12},
-            'Februari': {'bobot': 13, 'target': 14, 'real': 15, 'ach': 16, 'nilai': 17},
-            'Maret':    {'bobot': 18, 'target': 19, 'real': 20, 'ach': 21, 'nilai': 22},
-            'April':    {'bobot': 23, 'target': 24, 'real': 25, 'ach': 26, 'nilai': 27}
+            'Januari':  {'bobot': 9,  'target': 10, 'real': 11, 'ach': 12, 'nilai': 13},
+            'Februari': {'bobot': 14, 'target': 15, 'real': 16, 'ach': 17, 'nilai': 18},
+            'Maret':    {'bobot': 19, 'target': 20, 'real': 21, 'ach': 22, 'nilai': 23},
+            'April':    {'bobot': 24, 'target': 25, 'real': 26, 'ach': 27, 'nilai': 28}
         }
 
         all_data = []
         for month, cols in month_config.items():
             if cols['nilai'] < df_raw.shape[1]:
+                # Ambil Nama(2), KPI(6), UOM(7), Bobot, Target, Real, Ach, Nilai
                 temp = df_raw[[2, 6, 7, cols['bobot'], cols['target'], cols['real'], cols['ach'], cols['nilai']]].copy()
                 temp.columns = ['NAMA', 'KPI', 'UOM', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']
                 temp['BULAN_DATA'] = month
@@ -54,7 +58,7 @@ def load_data():
         df = pd.concat(all_data, ignore_index=True)
         df = df.dropna(subset=['KPI'])
         
-        # --- LOGIKA FILTER: SEMBUNYIKAN COST EFFECTIVENESS ---
+        # Sembunyikan Recruitment Cost Effectiveness dari tampilan
         df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
         df = df[~df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)].copy()
         
@@ -69,7 +73,7 @@ def load_data():
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
         return df
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error Mapping Kolom: {e}")
         return pd.DataFrame()
 
 df = load_data()
@@ -85,11 +89,10 @@ if not df.empty:
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
         
-        # HITUNG RATA-RATA ACH UNTUK BANNER
+        # Ranking berdasarkan rata-rata ACH
         avg_score = df_filtered['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Rata-rata Performance Tim</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # --- LOGIKA RANKING: HITUNG RATA-RATA ACH PER PIC ---
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
@@ -140,9 +143,10 @@ if not df.empty:
         
         st.divider()
         st.subheader(f"📑 Tabel Rincian Data Lengkap: {target}")
+        # Menampilkan rincian sesuai koordinat baru
         df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
         df_rincian.index = range(1, len(df_rincian) + 1)
         st.table(df_rincian)
 
 else:
-    st.info("Memuat data...")
+    st.info("Koneksi data berhasil. Sila pilih bulan di sidebar.")
