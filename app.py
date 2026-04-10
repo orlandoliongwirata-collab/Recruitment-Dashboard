@@ -27,18 +27,11 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Load Baris ke-5 Excel (skip 3 baris instruksi/judul)
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
-        
-        # Nama PIC (Kolom D / Indeks 2) ffill untuk handle merged cells
         df_raw[2] = df_raw[2].ffill() 
 
-        # --- KOREKSI KOORDINAT KOLOM SESUAI INSTRUKSI ---
-        # Jan: J=9, K=10, L=11, M=12, N=13
-        # Feb: O=14, P=15, Q=16, R=17, S=18
-        # Mar: T=19, U=20, V=21, W=22, X=23
-        # Apr: Y=24, Z=25, AA=26, AB=27, AC=28
+        # Pemetaan Kolom J-N (Jan), O-S (Feb), dst.
         month_config = {
             'Januari':  {'bobot': 9,  'target': 10, 'real': 11, 'ach': 12, 'nilai': 13},
             'Februari': {'bobot': 14, 'target': 15, 'real': 16, 'ach': 17, 'nilai': 18},
@@ -49,7 +42,6 @@ def load_data():
         all_data = []
         for month, cols in month_config.items():
             if cols['nilai'] < df_raw.shape[1]:
-                # Ambil Nama(2), KPI(6), UOM(7), Bobot, Target, Real, Ach, Nilai
                 temp = df_raw[[2, 6, 7, cols['bobot'], cols['target'], cols['real'], cols['ach'], cols['nilai']]].copy()
                 temp.columns = ['NAMA', 'KPI', 'UOM', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']
                 temp['BULAN_DATA'] = month
@@ -57,43 +49,61 @@ def load_data():
         
         df = pd.concat(all_data, ignore_index=True)
         df = df.dropna(subset=['KPI'])
+        df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)].copy()
         
-        # Sembunyikan Recruitment Cost Effectiveness dari tampilan
-        df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
-        df = df[~df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)].copy()
-        
-        # Bersihkan ACH untuk perhitungan Rata-rata Ranking
+        # Bersihkan ACH untuk perhitungan
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
                 v = float(s)
                 return v if v > 2 else v * 100
             except: return 0.0
-            
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
-        return df
+
+        # --- LOGIKA FILTER & RANKING KHUSUS ---
+        pic_dengan_cost = [
+            "CAROLINA PERMATA SARI", "YUNITA SAVIOR", "ANGELA", 
+            "BERLIANNA DEWI SETIAWAN", "TIARA ELSA STEVANNY"
+        ]
+
+        # 1. Simpan salinan data untuk perhitungan ranking (MENGHITUNG SEMUA)
+        df_for_rank = df.copy()
+        # Untuk PIC yang TIDAK ada di list, buang Cost Effectiveness dari perhitungan ranking
+        df_for_rank = df_for_rank[
+            (df_for_rank['NAMA'].str.upper().isin(pic_dengan_cost)) | 
+            (~df_for_rank['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False))
+        ]
+
+        # 2. Data untuk TAMPILAN (SEMBUNYIKAN COST EFFECTIVENESS DARI SEMUA)
+        df_display = df[~df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)].copy()
+        
+        return df_display, df_for_rank
     except Exception as e:
-        st.error(f"Error Mapping Kolom: {e}")
-        return pd.DataFrame()
+        st.error(f"Error: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
-df = load_data()
+df_display, df_for_rank = load_data()
 
-if not df.empty:
+if not df_display.empty:
     with st.sidebar:
         st.title("Admin Panel 🧭")
-        list_bulan = df['BULAN_DATA'].unique()
+        list_bulan = df_display['BULAN_DATA'].unique()
         sel_bulan = st.selectbox("📅 Pilih Bulan:", list_bulan)
-        df_filtered = df[df['BULAN_DATA'] == sel_bulan].copy()
+        
+        df_filtered_view = df_display[df_display['BULAN_DATA'] == sel_bulan].copy()
+        df_filtered_rank = df_for_rank[df_for_rank['BULAN_DATA'] == sel_bulan].copy()
+        
         view = st.radio("Tampilan:", ["🌍 Overview Tim", "👤 Detail PIC"])
 
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
         
-        # Ranking berdasarkan rata-rata ACH
-        avg_score = df_filtered['ACH_NUM'].mean()
-        st.markdown(f'<div class="avg-banner"><h3>Rata-rata Performance Tim</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
+        # Perhitungan rata-rata Tim (dari data ranking agar fair)
+        avg_score = df_filtered_rank['ACH_NUM'].mean()
+        st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
+        # LOGIKA RANKING BERDASARKAN RATA-RATA ACH (Termasuk/Tidak Cost sesuai PIC)
+        df_rank = df_filtered_rank.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
         for i, row in df_rank.iterrows():
@@ -109,44 +119,38 @@ if not df.empty:
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan per KPI (Satuan Spesifik)")
-        
+        st.subheader("📋 Ringkasan per KPI (Overview)")
         def custom_label(row):
-            kpi = row['KPI'].upper()
-            val = row['ACH_NUM']
-            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]):
-                return f"{val:.1f}%"
-            elif "SERVICE LEVEL" in kpi:
-                return f"{val:.0f} Hari"
-            elif "TRAINING HOURS" in kpi:
-                return f"{val:.1f} Jam"
-            else:
-                return f"{val:.1f}"
+            kpi, val = row['KPI'].upper(), row['ACH_NUM']
+            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]): return f"{val:.1f}%"
+            elif "SERVICE LEVEL" in kpi: return f"{val:.0f} Hari"
+            elif "TRAINING HOURS" in kpi: return f"{val:.1f} Jam"
+            else: return f"{val:.1f}"
 
-        df_filtered['DISPLAY'] = df_filtered.apply(custom_label, axis=1)
-        piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
+        df_filtered_view['DISPLAY'] = df_filtered_view.apply(custom_label, axis=1)
+        piv = df_filtered_view.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
         st.dataframe(piv, use_container_width=True)
 
     else:
-        # DETAIL PIC
         st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
-        target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
-        df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
+        target = st.selectbox("Pilih PIC:", df_filtered_view['NAMA'].unique())
+        df_pic_display = df_filtered_view[df_filtered_view['NAMA'] == target].copy()
+        
+        # Skor ACH rata-rata tetap mengambil dari df_for_rank agar akurat sesuai aturan Anda
+        df_pic_rank = df_filtered_rank[df_filtered_rank['NAMA'] == target]
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.metric("Avg Achievement (ACH)", f"{df_pic['ACH_NUM'].mean():.1f}%")
+            st.metric("Avg Achievement (Incl. Rule)", f"{df_pic_rank['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         with c2:
-            fig = px.bar(df_pic, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
+            fig = px.bar(df_pic_display, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
             st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
-        st.subheader(f"📑 Tabel Rincian Data Lengkap: {target}")
-        # Menampilkan rincian sesuai koordinat baru
-        df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
+        st.subheader(f"📑 Tabel Rincian Data: {target}")
+        df_rincian = df_pic_display[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
         df_rincian.index = range(1, len(df_rincian) + 1)
         st.table(df_rincian)
-
 else:
-    st.info("Koneksi data berhasil. Sila pilih bulan di sidebar.")
+    st.info("Memuat data...")
