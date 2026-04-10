@@ -27,10 +27,15 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
+        # Load Baris ke-5 Excel (skip 3 baris instruksi/judul)
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
+        
+        # Nama PIC (Kolom D / Indeks 2)
         df_raw[2] = df_raw[2].ffill() 
 
+        # Konfigurasi Kolom Bulanan (Bobot, Target, Real, Ach, Nilai)
+        # Menyesuaikan koordinat kolom J-N, O-S, T-X, Y-AC
         month_config = {
             'Januari':  {'bobot': 8, 'target': 9,  'real': 10, 'ach': 11, 'nilai': 12},
             'Februari': {'bobot': 13, 'target': 14, 'real': 15, 'ach': 16, 'nilai': 17},
@@ -53,6 +58,7 @@ def load_data():
         df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
         df = df[~df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)].copy()
         
+        # Bersihkan ACH untuk perhitungan Rata-rata Ranking
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
@@ -78,9 +84,12 @@ if not df.empty:
 
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
-        avg_score = df_filtered['ACH_NUM'].mean()
-        st.markdown(f'<div class="avg-banner"><h3>Average Team Achievement</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
+        # HITUNG RATA-RATA ACH UNTUK BANNER
+        avg_score = df_filtered['ACH_NUM'].mean()
+        st.markdown(f'<div class="avg-banner"><h3>Rata-rata Performance Tim</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
+        
+        # --- LOGIKA RANKING: HITUNG RATA-RATA ACH PER PIC ---
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
@@ -97,7 +106,7 @@ if not df.empty:
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan per KPI")
+        st.subheader("📋 Ringkasan per KPI (Satuan Spesifik)")
         
         def custom_label(row):
             kpi = row['KPI'].upper()
@@ -116,13 +125,14 @@ if not df.empty:
         st.dataframe(piv, use_container_width=True)
 
     else:
+        # DETAIL PIC
         st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
         target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.metric("Avg Achievement", f"{df_pic['ACH_NUM'].mean():.1f}%")
+            st.metric("Avg Achievement (ACH)", f"{df_pic['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         with c2:
             fig = px.bar(df_pic, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
