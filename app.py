@@ -15,7 +15,7 @@ st.markdown("""
     .rank-img { border-radius: 50%; width: 80px; height: 80px; object-fit: cover; border: 3px solid #ffb7ce; margin-bottom: 8px; }
     .avg-banner {
         background: linear-gradient(90deg, #ffdee9 0%, #b5fffc 100%);
-        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25px;
+        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25 :px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -27,26 +27,28 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
+        # Kita baca mulai dari baris ke-4 Excel (skip 3 baris) agar header terbaca benar
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
         
-        # Kolom C=2 (NAMA), Kolom H=7 (KPI), Kolom I=8 (UOM)
+        # Identitas: NAMA (Kolom D/Indeks 2), KPI (Kolom H/Indeks 6), UOM (Kolom I/Indeks 7)
         df_raw[2] = df_raw[2].ffill() 
 
-        # Konfigurasi Kolom Bulanan
+        # Konfigurasi Kolom Bulanan (Masing-masing bulan punya 5 kolom: Bobot, Target, Real, Ach, Nilai)
+        # Januari mulai kolom J (Indeks 8)
         month_config = {
-            'Januari':  {'target': 10, 'real': 11, 'ach': 12},
-            'Februari': {'target': 15, 'real': 16, 'ach': 17},
-            'Maret':    {'target': 20, 'real': 21, 'ach': 22},
-            'April':    {'target': 25, 'real': 26, 'ach': 27}
+            'Januari':  {'bobot': 8, 'target': 9,  'real': 10, 'ach': 11, 'nilai': 12},
+            'Februari': {'bobot': 13, 'target': 14, 'real': 15, 'ach': 16, 'nilai': 17},
+            'Maret':    {'bobot': 18, 'target': 19, 'real': 20, 'ach': 21, 'nilai': 22},
+            'April':    {'bobot': 23, 'target': 24, 'real': 25, 'ach': 26, 'nilai': 27}
         }
 
         all_data = []
         for month, cols in month_config.items():
-            if cols['ach'] < df_raw.shape[1]:
-                # Kita ambil tambahan kolom 8 (UOM) agar tahu satuannya
-                temp = df_raw[[2, 7, 8, cols['target'], cols['real'], cols['ach']]].copy()
-                temp.columns = ['NAMA', 'KPI', 'UOM', 'TARGET', 'REAL', 'ACH']
+            if cols['nilai'] < df_raw.shape[1]:
+                # Ambil Nama, KPI, UOM, dan 5 kolom data bulanan
+                temp = df_raw[[2, 6, 7, cols['bobot'], cols['target'], cols['real'], cols['ach'], cols['nilai']]].copy()
+                temp.columns = ['NAMA', 'KPI', 'UOM', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']
                 temp['BULAN_DATA'] = month
                 all_data.append(temp)
         
@@ -54,23 +56,15 @@ def load_data():
         df = df.dropna(subset=['KPI'])
         df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
         
-        # --- PERBAIKAN LOGIKA SATUAN ---
-        def format_value(val, uom):
+        # Logika pembersihan angka untuk kalkulasi (Ranking tetap pakai Ach %)
+        def clean_to_num(x):
             try:
-                # Bersihkan karakter non-numerik kecuali titik/koma
-                s = str(val).replace('%', '').replace(',', '.').replace('-', '0').strip()
+                s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
                 v = float(s)
-                
-                # Jika UOM adalah persen, pastikan dalam skala 0-100
-                if uom == '%':
-                    return v if v > 2 else v * 100
-                return v # Untuk Jam atau Jumlah (#), biarkan angka aslinya
-            except:
-                return 0.0
+                return v if v > 2 else v * 100
+            except: return 0.0
             
-        # Terapkan format berbeda berdasarkan kolom UOM
-        df['VALUE_NUM'] = df.apply(lambda x: format_value(x['ACH'], x['UOM']), axis=1)
-        
+        df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
         return df
     except Exception as e:
         st.error(f"Error: {e}")
@@ -88,11 +82,11 @@ if not df.empty:
 
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
-        # Rata-rata tim tetap menggunakan angka achievement
-        avg_score = df_filtered['VALUE_NUM'].mean()
+        avg_score = df_filtered['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Team Achievement</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        df_rank = df_filtered.groupby('NAMA').agg({'VALUE_NUM': 'mean'}).reset_index().sort_values('VALUE_NUM', ascending=False).reset_index(drop=True)
+        # Leaderboard berdasarkan rata-rata Achievement
+        df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
         for i, row in df_rank.iterrows():
@@ -103,40 +97,45 @@ if not df.empty:
                         <div style="font-size:20px;">{medali}</div>
                         <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" class="rank-img">
                         <div style="font-weight:bold; font-size:13px; min-height:40px;">{row['NAMA']}</div>
-                        <div style="color:#ff7eb9; font-weight:bold; font-size:18px;">{row['VALUE_NUM']:.1f}%</div>
+                        <div style="color:#ff7eb9; font-weight:bold; font-size:18px;">{row['ACH_NUM']:.1f}%</div>
                     </div>
                 """, unsafe_allow_html=True)
         
         st.divider()
         st.subheader("📋 Ringkasan per KPI (Adaptif Satuan)")
         
-        # Kita buat kolom tampilan yang menggabungkan angka + satuan
-        def label_satuan(row):
-            if row['UOM'] == '%': return f"{row['VALUE_NUM']:.1f}%"
-            if row['UOM'] == 'Jam': return f"{row['VALUE_NUM']:.1f} Jam"
-            return f"{row['VALUE_NUM']:.0f}" # Untuk jumlah (#)
+        # Formatter tampilan tabel ringkasan agar sesuai UOM
+        def label_display(row):
+            if row['UOM'] == '%': return f"{row['ACH_NUM']:.1f}%"
+            if row['UOM'] == 'Jam': return f"{row['ACH_NUM']:.1f} Jam"
+            return f"{row['ACH_NUM']:.0f}"
 
-        df_filtered['DISPLAY_VAL'] = df_filtered.apply(label_satuan, axis=1)
-        piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='DISPLAY_VAL', aggfunc='first').fillna("-")
+        df_filtered['DISPLAY'] = df_filtered.apply(label_display, axis=1)
+        piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
         st.dataframe(piv, use_container_width=True)
 
     else:
-        # Detail PIC
+        # --- PERSONAL DETAIL (RINCIAN LENGKAP) ---
         st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
         target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.metric("Avg Achievement", f"{df_pic['VALUE_NUM'].mean():.1f}%")
+            st.metric("Avg Achievement", f"{df_pic['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         with c2:
-            fig = px.bar(df_pic, x='KPI', y='VALUE_NUM', text='VALUE_NUM', color_continuous_scale='PuRd')
-            fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+            fig = px.bar(df_pic, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
             st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
-        # Tabel rincian dengan satuan asli
-        st.table(df_pic[['KPI', 'UOM', 'TARGET', 'REAL', 'ACH']])
+        st.subheader(f"📑 Tabel Rincian Data Lengkap: {target}")
+        
+        # Menampilkan kolom rincian sesuai permintaan Anda: Bobot, Target, Real, Ach, Nilai
+        df_rincian = df_pic[['KPI', 'UOM', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
+        df_rincian.index = range(1, len(df_rincian) + 1)
+        
+        st.table(df_rincian)
+
 else:
-    st.info("Memuat data...")
+    st.info("Memuat data dari Baris 5...")
