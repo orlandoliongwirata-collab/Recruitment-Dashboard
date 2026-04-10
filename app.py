@@ -27,14 +27,10 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Load Baris ke-5 Excel (skip 3 baris instruksi/judul)
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
-        
-        # Nama PIC (Kolom D / Indeks 2)
         df_raw[2] = df_raw[2].ffill() 
 
-        # Konfigurasi Kolom Bulanan (Blok 5 Kolom: Bobot, Target, Real, Ach, Nilai)
         month_config = {
             'Januari':  {'bobot': 8, 'target': 9,  'real': 10, 'ach': 11, 'nilai': 12},
             'Februari': {'bobot': 13, 'target': 14, 'real': 15, 'ach': 16, 'nilai': 17},
@@ -52,12 +48,14 @@ def load_data():
         
         df = pd.concat(all_data, ignore_index=True)
         df = df.dropna(subset=['KPI'])
-        df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
         
-        # Logika pembersihan angka untuk kalkulasi (Ranking tetap dari ACH)
+        # --- LOGIKA FILTER: SEMBUNYIKAN COST EFFECTIVENESS ---
+        df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
+        df = df[~df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)].copy()
+        
         def clean_to_num(x):
             try:
-                s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
+                s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
                 v = float(s)
                 return v if v > 2 else v * 100
             except: return 0.0
@@ -83,7 +81,6 @@ if not df.empty:
         avg_score = df_filtered['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Team Achievement</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # Ranking berdasarkan rata-rata ACH
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
@@ -100,22 +97,17 @@ if not df.empty:
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan per KPI (Satuan Custom)")
+        st.subheader("📋 Ringkasan per KPI")
         
-        # LOGIKA SATUAN CUSTOM SESUAI PERMINTAAN LENGKAP
         def custom_label(row):
             kpi = row['KPI'].upper()
             val = row['ACH_NUM']
-            
-            # Cek KPI satu per satu
             if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]):
                 return f"{val:.1f}%"
             elif "SERVICE LEVEL" in kpi:
                 return f"{val:.0f} Hari"
             elif "TRAINING HOURS" in kpi:
                 return f"{val:.1f} Jam"
-            elif "COST EFFECTIVENESS" in kpi:
-                return f"Rp {val:,.0f}"
             else:
                 return f"{val:.1f}"
 
@@ -124,7 +116,6 @@ if not df.empty:
         st.dataframe(piv, use_container_width=True)
 
     else:
-        # DETAIL PIC
         st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
         target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
@@ -139,8 +130,6 @@ if not df.empty:
         
         st.divider()
         st.subheader(f"📑 Tabel Rincian Data Lengkap: {target}")
-        
-        # Menampilkan kolom lengkap: Bobot, Target, Real, Ach, Nilai
         df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
         df_rincian.index = range(1, len(df_rincian) + 1)
         st.table(df_rincian)
