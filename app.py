@@ -15,7 +15,7 @@ st.markdown("""
     .rank-img { border-radius: 50%; width: 80px; height: 80px; object-fit: cover; border: 3px solid #ffb7ce; margin-bottom: 8px; }
     .avg-banner {
         background: linear-gradient(90deg, #ffdee9 0%, #b5fffc 100%);
-        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25 :px;
+        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -27,15 +27,13 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Kita baca mulai dari baris ke-4 Excel (skip 3 baris) agar header terbaca benar
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
         
-        # Identitas: NAMA (Kolom D/Indeks 2), KPI (Kolom H/Indeks 6), UOM (Kolom I/Indeks 7)
+        # Nama PIC (Kolom D / Indeks 2)
         df_raw[2] = df_raw[2].ffill() 
 
-        # Konfigurasi Kolom Bulanan (Masing-masing bulan punya 5 kolom: Bobot, Target, Real, Ach, Nilai)
-        # Januari mulai kolom J (Indeks 8)
+        # Konfigurasi Kolom Bulanan (Bobot, Target, Real, Ach, Nilai)
         month_config = {
             'Januari':  {'bobot': 8, 'target': 9,  'real': 10, 'ach': 11, 'nilai': 12},
             'Februari': {'bobot': 13, 'target': 14, 'real': 15, 'ach': 16, 'nilai': 17},
@@ -46,7 +44,6 @@ def load_data():
         all_data = []
         for month, cols in month_config.items():
             if cols['nilai'] < df_raw.shape[1]:
-                # Ambil Nama, KPI, UOM, dan 5 kolom data bulanan
                 temp = df_raw[[2, 6, 7, cols['bobot'], cols['target'], cols['real'], cols['ach'], cols['nilai']]].copy()
                 temp.columns = ['NAMA', 'KPI', 'UOM', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']
                 temp['BULAN_DATA'] = month
@@ -56,11 +53,12 @@ def load_data():
         df = df.dropna(subset=['KPI'])
         df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)]
         
-        # Logika pembersihan angka untuk kalkulasi (Ranking tetap pakai Ach %)
+        # Logika pembersihan angka untuk kalkulasi Ranking (Murni dari kolom ACH)
         def clean_to_num(x):
             try:
-                s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
+                s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
                 v = float(s)
+                # Jika angka kecil (misal 0.95), kita asumsikan itu desimal dari persen
                 return v if v > 2 else v * 100
             except: return 0.0
             
@@ -85,7 +83,7 @@ if not df.empty:
         avg_score = df_filtered['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Team Achievement</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # Leaderboard berdasarkan rata-rata Achievement
+        # Ranking berdasarkan rata-rata ACH_NUM
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
@@ -102,20 +100,28 @@ if not df.empty:
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan per KPI (Adaptif Satuan)")
+        st.subheader("📋 Ringkasan per KPI (Satuan Custom)")
         
-        # Formatter tampilan tabel ringkasan agar sesuai UOM
-        def label_display(row):
-            if row['UOM'] == '%': return f"{row['ACH_NUM']:.1f}%"
-            if row['UOM'] == 'Jam': return f"{row['ACH_NUM']:.1f} Jam"
-            return f"{row['ACH_NUM']:.0f}"
+        # LOGIKA SATUAN CUSTOM SESUAI PERMINTAAN
+        def custom_label(row):
+            kpi = row['KPI'].upper()
+            val = row['ACH_NUM']
+            
+            if "RECRUITMENT SUCCESS RATE" in kpi or "QUALITY OF HIRE" in kpi or "MANPOWER FULFILLMENT" in kpi:
+                return f"{val:.1f}%"
+            elif "RECRUITMENT SERVICE LEVEL" in kpi:
+                return f"{val:.0f} Hari"
+            elif "TRAINING HOURS" in kpi:
+                return f"{val:.1f} Jam"
+            else:
+                return f"{val:.1f}" # Default jika nama tidak cocok
 
-        df_filtered['DISPLAY'] = df_filtered.apply(label_display, axis=1)
+        df_filtered['DISPLAY'] = df_filtered.apply(custom_label, axis=1)
         piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
         st.dataframe(piv, use_container_width=True)
 
     else:
-        # --- PERSONAL DETAIL (RINCIAN LENGKAP) ---
+        # DETAIL PIC
         st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
         target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
@@ -131,11 +137,10 @@ if not df.empty:
         st.divider()
         st.subheader(f"📑 Tabel Rincian Data Lengkap: {target}")
         
-        # Menampilkan kolom rincian sesuai permintaan Anda: Bobot, Target, Real, Ach, Nilai
-        df_rincian = df_pic[['KPI', 'UOM', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
+        # Tabel rincian tetap lengkap: Bobot, Target, Real, Ach, Nilai
+        df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
         df_rincian.index = range(1, len(df_rincian) + 1)
-        
         st.table(df_rincian)
 
 else:
-    st.info("Memuat data dari Baris 5...")
+    st.info("Memuat data...")
