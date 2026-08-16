@@ -66,7 +66,7 @@ def load_data():
 
         df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
 
-        # Clean ACH untuk angka kalkulasi (Termasuk SEMUA KPI)
+        # Clean ACH untuk angka kalkulasi
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
@@ -103,10 +103,13 @@ if not df.empty:
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_periode}")
         
-        # Perhitungan Ranking berdasarkan SEMUA KPI
+        # --- PERHITUNGAN RATA-RATA DYNAMIC PER PIC ---
+        # Pandas .mean() secara otomatis membagi total nilai dengan JUMLAH BARIS MEREKA YANG ADA.
+        # Claudia (5 baris KPI) akan otomatis dibagi 5.
+        # PIC lain (6 baris KPI) akan otomatis dibagi 6.
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
-        avg_score = df_filtered['ACH_NUM'].mean()
+        avg_score = df_rank['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
         # Kartu Medali
@@ -126,7 +129,6 @@ if not df.empty:
         st.divider()
         st.subheader(f"📋 Ringkasan per KPI ({sel_periode})")
         
-        # Custom Label untuk Tampilan Satuan Spesifik
         def custom_label(row):
             kpi, val = str(row['KPI']).upper(), row['ACH_NUM']
             if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]):
@@ -158,7 +160,7 @@ if not df.empty:
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.metric("Avg Achievement (Semua KPI)", f"{df_pic['ACH_NUM'].mean():.1f}%")
+            st.metric("Avg Achievement", f"{df_pic['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         with c2:
             fig = px.bar(df_pic, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
