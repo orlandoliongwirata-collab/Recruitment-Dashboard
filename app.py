@@ -27,16 +27,22 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
+        # Load Baris ke-5 Excel (skip 3 baris instruksi/judul)
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
         df_raw[2] = df_raw[2].ffill() 
 
-        # Pemetaan Kolom J-N (Jan), O-S (Feb), dst.
+        # --- UPDATE KOORDINAT BULAN (Termasuk Mei & Juni) ---
+        # Setiap bulan bertambah 5 kolom
         month_config = {
             'Januari':  {'bobot': 9,  'target': 10, 'real': 11, 'ach': 12, 'nilai': 13},
             'Februari': {'bobot': 14, 'target': 15, 'real': 16, 'ach': 17, 'nilai': 18},
             'Maret':    {'bobot': 19, 'target': 20, 'real': 21, 'ach': 22, 'nilai': 23},
-            'April':    {'bobot': 24, 'target': 25, 'real': 26, 'ach': 27, 'nilai': 28}
+            'April':    {'bobot': 24, 'target': 25, 'real': 26, 'ach': 27, 'nilai': 28},
+            'Mei':      {'bobot': 29, 'target': 30, 'real': 31, 'ach': 32, 'nilai': 33},
+            'Juni':     {'bobot': 34, 'target': 35, 'real': 36, 'ach': 37, 'nilai': 38},
+            'Juli':     {'bobot': 39, 'target': 40, 'real': 41, 'ach': 42, 'nilai': 43},
+            'Agustus':  {'bobot': 44, 'target': 45, 'real': 46, 'ach': 47, 'nilai': 48}
         }
 
         all_data = []
@@ -60,21 +66,18 @@ def load_data():
             except: return 0.0
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
 
-        # --- LOGIKA FILTER & RANKING KHUSUS ---
+        # Logika khusus untuk PIC dengan Cost Effectiveness
         pic_dengan_cost = [
             "CAROLINA PERMATA SARI", "YUNITA SAVIOR", "ANGELA", 
             "BERLIANNA DEWI SETIAWAN", "TIARA ELSA STEVANNY"
         ]
 
-        # 1. Simpan salinan data untuk perhitungan ranking (MENGHITUNG SEMUA)
         df_for_rank = df.copy()
-        # Untuk PIC yang TIDAK ada di list, buang Cost Effectiveness dari perhitungan ranking
         df_for_rank = df_for_rank[
             (df_for_rank['NAMA'].str.upper().isin(pic_dengan_cost)) | 
             (~df_for_rank['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False))
         ]
 
-        # 2. Data untuk TAMPILAN (SEMBUNYIKAN COST EFFECTIVENESS DARI SEMUA)
         df_display = df[~df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)].copy()
         
         return df_display, df_for_rank
@@ -98,12 +101,11 @@ if not df_display.empty:
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_bulan}")
         
-        # Perhitungan rata-rata Tim (dari data ranking agar fair)
+        # Hitung Ranking
+        df_rank = df_filtered_rank.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
+        
         avg_score = df_filtered_rank['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
-        
-        # LOGIKA RANKING BERDASARKAN RATA-RATA ACH (Termasuk/Tidak Cost sesuai PIC)
-        df_rank = df_filtered_rank.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         cols = st.columns(min(len(df_rank), 5))
         for i, row in df_rank.iterrows():
@@ -119,7 +121,8 @@ if not df_display.empty:
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan per KPI (Overview)")
+        st.subheader("📋 Ringkasan per KPI (Urut Sesuai Ranking)")
+        
         def custom_label(row):
             kpi, val = row['KPI'].upper(), row['ACH_NUM']
             if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]): return f"{val:.1f}%"
@@ -129,14 +132,15 @@ if not df_display.empty:
 
         df_filtered_view['DISPLAY'] = df_filtered_view.apply(custom_label, axis=1)
         piv = df_filtered_view.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
+        
+        # Urutkan tabel sesuai ranking
+        piv = piv.reindex(df_rank['NAMA'])
         st.dataframe(piv, use_container_width=True)
 
     else:
         st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
         target = st.selectbox("Pilih PIC:", df_filtered_view['NAMA'].unique())
         df_pic_display = df_filtered_view[df_filtered_view['NAMA'] == target].copy()
-        
-        # Skor ACH rata-rata tetap mengambil dari df_for_rank agar akurat sesuai aturan Anda
         df_pic_rank = df_filtered_rank[df_filtered_rank['NAMA'] == target]
         
         c1, c2 = st.columns([1, 2])
