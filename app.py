@@ -27,12 +27,10 @@ def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
     
     try:
-        # Load Baris ke-5 Excel (skip 3 baris instruksi/judul)
         df_raw = pd.read_csv(url, skiprows=3)
         df_raw.columns = range(df_raw.shape[1])
         df_raw[2] = df_raw[2].ffill() # Nama PIC
 
-        # --- PEMETAAN KOORDINAT BULAN ---
         month_config = {
             'Januari':  {'bobot': 9,  'target': 10, 'real': 11, 'ach': 12, 'nilai': 13},
             'Februari': {'bobot': 14, 'target': 15, 'real': 16, 'ach': 17, 'nilai': 18},
@@ -56,7 +54,6 @@ def load_data():
         df = df.dropna(subset=['KPI'])
         df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)].copy()
         
-        # Mapping Quarter / Triwulan
         def get_quarter(m):
             if m in ['Januari', 'Februari', 'Maret']: return 'Q1 (Jan - Mar)'
             elif m in ['April', 'Mei', 'Juni']: return 'Q2 (Apr - Jun)'
@@ -66,7 +63,6 @@ def load_data():
 
         df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
 
-        # Clean ACH untuk angka kalkulasi
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
@@ -103,16 +99,11 @@ if not df.empty:
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_periode}")
         
-        # --- PERHITUNGAN RATA-RATA DYNAMIC PER PIC ---
-        # Pandas .mean() secara otomatis membagi total nilai dengan JUMLAH BARIS MEREKA YANG ADA.
-        # Claudia (5 baris KPI) akan otomatis dibagi 5.
-        # PIC lain (6 baris KPI) akan otomatis dibagi 6.
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
-        
         avg_score = df_rank['ACH_NUM'].mean()
+        
         st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # Kartu Medali
         cols = st.columns(min(len(df_rank), 5))
         for i, row in df_rank.iterrows():
             with cols[i % 5]:
@@ -131,16 +122,11 @@ if not df.empty:
         
         def custom_label(row):
             kpi, val = str(row['KPI']).upper(), row['ACH_NUM']
-            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]):
-                return f"{val:.1f}%"
-            elif "SERVICE LEVEL" in kpi:
-                return f"{val:.0f} Hari"
-            elif "TRAINING HOURS" in kpi:
-                return f"{val:.1f} Jam"
-            elif "COST EFFECTIVENESS" in kpi:
-                return f"Rp {val:,.0f}"
-            else:
-                return f"{val:.1f}"
+            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]): return f"{val:.1f}%"
+            elif "SERVICE LEVEL" in kpi: return f"{val:.0f} Hari"
+            elif "TRAINING HOURS" in kpi: return f"{val:.1f} Jam"
+            elif "COST EFFECTIVENESS" in kpi: return f"Rp {val:,.0f}"
+            else: return f"{val:.1f}"
 
         df_filtered['DISPLAY'] = df_filtered.apply(custom_label, axis=1)
         
@@ -154,22 +140,47 @@ if not df.empty:
             st.dataframe(piv, use_container_width=True)
 
     else:
+        # --- DETAIL PIC SUPER RAPI ---
         st.title(f"👤 Deep-Dive PIC - {sel_periode}")
         target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
         
-        c1, c2 = st.columns([1, 2])
+        c1, c2 = st.columns([1, 2.5])
         with c1:
             st.metric("Avg Achievement", f"{df_pic['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
+        
         with c2:
-            fig = px.bar(df_pic, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
+            # Menggunakan RATA-RATA per KPI agar grafik tidak "stacked" ke 350%
+            df_pic_avg = df_pic.groupby('KPI', as_index=False)['ACH_NUM'].mean()
+            fig = px.bar(
+                df_pic_avg, 
+                x='KPI', 
+                y='ACH_NUM', 
+                text_auto='.1f', 
+                color_discrete_sequence=['#ff7eb9'],
+                title=f"Rata-rata Pencapaian KPI ({sel_periode})"
+            )
+            fig.update_layout(yaxis_title="Rata-rata ACH (%)", xaxis_title="")
             st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
-        st.subheader(f"📑 Tabel Rincian Data Lengkap: {target}")
-        df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
-        df_rincian.index = range(1, len(df_rincian) + 1)
-        st.table(df_rincian)
+        st.subheader(f"📑 Tabel Rincian Data: {target}")
+        
+        # JIKA MODE TRIWULAN: DIBUATKAN TAB INTERAKTIF PER BULAN
+        if mode_periode == "Juara Triwulan (3 Bulan)":
+            bulan_list = df_pic['BULAN_DATA'].unique()
+            tabs = st.tabs([f"📅 {b}" for b in bulan_list])
+            
+            for idx, b_name in enumerate(bulan_list):
+                with tabs[idx]:
+                    df_sub = df_pic[df_pic['BULAN_DATA'] == b_name][['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
+                    df_sub.index = range(1, len(df_sub) + 1)
+                    st.table(df_sub)
+        else:
+            # MODE BULANAN biasa
+            df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
+            df_rincian.index = range(1, len(df_rincian) + 1)
+            st.table(df_rincian)
 else:
     st.info("Memuat data...")
