@@ -32,8 +32,7 @@ def load_data():
         df_raw.columns = range(df_raw.shape[1])
         df_raw[2] = df_raw[2].ffill() 
 
-        # --- UPDATE KOORDINAT BULAN (Termasuk Mei & Juni) ---
-        # Setiap bulan bertambah 5 kolom
+        # --- UPDATE KOORDINAT BULAN (Januari - Juni & Seterusnya) ---
         month_config = {
             'Januari':  {'bobot': 9,  'target': 10, 'real': 11, 'ach': 12, 'nilai': 13},
             'Februari': {'bobot': 14, 'target': 15, 'real': 16, 'ach': 17, 'nilai': 18},
@@ -57,7 +56,17 @@ def load_data():
         df = df.dropna(subset=['KPI'])
         df = df[~df['KPI'].str.contains('TOTAL', case=False, na=False)].copy()
         
-        # Bersihkan ACH untuk perhitungan
+        # Mapping Quarter / Triwulan
+        def get_quarter(m):
+            if m in ['Januari', 'Februari', 'Maret']: return 'Q1 (Jan - Mar)'
+            elif m in ['April', 'Mei', 'Juni']: return 'Q2 (Apr - Jun)'
+            elif m in ['Juli', 'Agustus', 'September']: return 'Q3 (Jul - Sep)'
+            elif m in ['Oktober', 'November', 'Desember']: return 'Q4 (Okt - Des)'
+            return 'Lainnya'
+
+        df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
+
+        # Clean ACH untuk angka kalkulasi
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').strip()
@@ -66,7 +75,7 @@ def load_data():
             except: return 0.0
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
 
-        # Logika khusus untuk PIC dengan Cost Effectiveness
+        # Logika PIC khusus yang menghitung Cost Effectiveness dalam ranking
         pic_dengan_cost = [
             "CAROLINA PERMATA SARI", "YUNITA SAVIOR", "ANGELA", 
             "BERLIANNA DEWI SETIAWAN", "TIARA ELSA STEVANNY"
@@ -90,23 +99,34 @@ df_display, df_for_rank = load_data()
 if not df_display.empty:
     with st.sidebar:
         st.title("Admin Panel 🧭")
-        list_bulan = df_display['BULAN_DATA'].unique()
-        sel_bulan = st.selectbox("📅 Pilih Bulan:", list_bulan)
         
-        df_filtered_view = df_display[df_display['BULAN_DATA'] == sel_bulan].copy()
-        df_filtered_rank = df_for_rank[df_for_rank['BULAN_DATA'] == sel_bulan].copy()
+        # Pilihan Mode Periode
+        mode_periode = st.radio("🗓️ Mode Periode:", ["Laporan Bulanan", "Juara Triwulan (3 Bulan)"])
         
+        if mode_periode == "Laporan Bulanan":
+            list_bulan = df_display['BULAN_DATA'].unique()
+            sel_periode = st.selectbox("📅 Pilih Bulan:", list_bulan)
+            df_filtered_view = df_display[df_display['BULAN_DATA'] == sel_periode].copy()
+            df_filtered_rank = df_for_rank[df_for_rank['BULAN_DATA'] == sel_periode].copy()
+        else:
+            list_q = [q for q in df_display['TRIWULAN'].unique() if q != 'Lainnya']
+            sel_periode = st.selectbox("🏆 Pilih Triwulan:", list_q)
+            df_filtered_view = df_display[df_display['TRIWULAN'] == sel_periode].copy()
+            df_filtered_rank = df_for_rank[df_for_rank['TRIWULAN'] == sel_periode].copy()
+
+        st.divider()
         view = st.radio("Tampilan:", ["🌍 Overview Tim", "👤 Detail PIC"])
 
     if view == "🌍 Overview Tim":
-        st.title(f"🏆 Leaderboard - {sel_bulan}")
+        st.title(f"🏆 Leaderboard - {sel_periode}")
         
-        # Hitung Ranking
+        # Perhitungan Rata-Rata ACH Periode Terpilih
         df_rank = df_filtered_rank.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         avg_score = df_filtered_rank['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
+        # Kartu Medali
         cols = st.columns(min(len(df_rank), 5))
         for i, row in df_rank.iterrows():
             with cols[i % 5]:
@@ -121,7 +141,7 @@ if not df_display.empty:
                 """, unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("📋 Ringkasan per KPI (Urut Sesuai Ranking)")
+        st.subheader(f"📋 Ringkasan per KPI ({sel_periode})")
         
         def custom_label(row):
             kpi, val = row['KPI'].upper(), row['ACH_NUM']
@@ -131,21 +151,26 @@ if not df_display.empty:
             else: return f"{val:.1f}"
 
         df_filtered_view['DISPLAY'] = df_filtered_view.apply(custom_label, axis=1)
-        piv = df_filtered_view.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
         
-        # Urutkan tabel sesuai ranking
-        piv = piv.reindex(df_rank['NAMA'])
-        st.dataframe(piv, use_container_width=True)
+        # Aggregate rata-rata jika mode Triwulan
+        if mode_periode == "Juara Triwulan (3 Bulan)":
+            piv = df_filtered_view.pivot_table(index='NAMA', columns='KPI', values='ACH_NUM', aggfunc='mean').fillna(0)
+            piv = piv.reindex(df_rank['NAMA'])
+            st.dataframe(piv.style.format("{:.1f}%"), use_container_width=True)
+        else:
+            piv = df_filtered_view.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
+            piv = piv.reindex(df_rank['NAMA'])
+            st.dataframe(piv, use_container_width=True)
 
     else:
-        st.title(f"👤 Deep-Dive PIC - {sel_bulan}")
+        st.title(f"👤 Deep-Dive PIC - {sel_periode}")
         target = st.selectbox("Pilih PIC:", df_filtered_view['NAMA'].unique())
         df_pic_display = df_filtered_view[df_filtered_view['NAMA'] == target].copy()
         df_pic_rank = df_filtered_rank[df_filtered_rank['NAMA'] == target]
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.metric("Avg Achievement (Incl. Rule)", f"{df_pic_rank['ACH_NUM'].mean():.1f}%")
+            st.metric("Avg Achievement", f"{df_pic_rank['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         with c2:
             fig = px.bar(df_pic_display, x='KPI', y='ACH_NUM', text_auto='.1f', color_continuous_scale='PuRd')
