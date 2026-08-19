@@ -63,12 +63,16 @@ def load_data():
 
         df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
 
+        # --- PERBAIKAN LOGIKA PEMBERSAHAN ANGKA (SUPPORT >100%) ---
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
                 v = float(s)
-                return v if v > 2 else v * 100
-            except: return 0.0
+                # Jika Google Sheets mengeksport angka persen sebagai desimal (misal 1.2 = 120%), kalikan 100.
+                # Jika sudah berupa angka bulat biasa (misal 120), gunakan langsung nilainya.
+                return v * 100 if v <= 2.5 and v > 0 else v
+            except: 
+                return 0.0
             
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
         return df
@@ -120,7 +124,6 @@ if not df.empty:
         st.divider()
         st.subheader(f"📋 Ringkasan per KPI ({sel_periode})")
         
-        # --- PERBAIKAN FORMAT SATUAN (Training Hours -> Persen) ---
         def custom_label(row):
             kpi, val = str(row['KPI']).upper(), row['ACH_NUM']
             if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT", "TRAINING HOURS"]):
