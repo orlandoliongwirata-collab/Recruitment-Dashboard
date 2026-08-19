@@ -120,13 +120,17 @@ if not df.empty:
         st.divider()
         st.subheader(f"📋 Ringkasan per KPI ({sel_periode})")
         
+        # --- PERBAIKAN FORMAT SATUAN (Training Hours -> Persen) ---
         def custom_label(row):
             kpi, val = str(row['KPI']).upper(), row['ACH_NUM']
-            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT"]): return f"{val:.1f}%"
-            elif "SERVICE LEVEL" in kpi: return f"{val:.0f} Hari"
-            elif "TRAINING HOURS" in kpi: return f"{val:.1f} Jam"
-            elif "COST EFFECTIVENESS" in kpi: return f"Rp {val:,.0f}"
-            else: return f"{val:.1f}"
+            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT", "TRAINING HOURS"]):
+                return f"{val:.1f}%"
+            elif "SERVICE LEVEL" in kpi:
+                return f"{val:.0f} Hari"
+            elif "COST EFFECTIVENESS" in kpi:
+                return f"Rp {val:,.0f}"
+            else:
+                return f"{val:.1f}"
 
         df_filtered['DISPLAY'] = df_filtered.apply(custom_label, axis=1)
         
@@ -140,7 +144,6 @@ if not df.empty:
             st.dataframe(piv, use_container_width=True)
 
     else:
-        # --- DETAIL PIC SUPER RAPI ---
         st.title(f"👤 Deep-Dive PIC - {sel_periode}")
         target = st.selectbox("Pilih PIC:", df_filtered['NAMA'].unique())
         df_pic = df_filtered[df_filtered['NAMA'] == target].copy()
@@ -151,7 +154,6 @@ if not df.empty:
             st.image("https://via.placeholder.com/150")
         
         with c2:
-            # Menggunakan RATA-RATA per KPI agar grafik tidak "stacked" ke 350%
             df_pic_avg = df_pic.groupby('KPI', as_index=False)['ACH_NUM'].mean()
             fig = px.bar(
                 df_pic_avg, 
@@ -167,7 +169,6 @@ if not df.empty:
         st.divider()
         st.subheader(f"📑 Tabel Rincian Data: {target}")
         
-        # JIKA MODE TRIWULAN: DIBUATKAN TAB INTERAKTIF PER BULAN
         if mode_periode == "Juara Triwulan (3 Bulan)":
             bulan_list = df_pic['BULAN_DATA'].unique()
             tabs = st.tabs([f"📅 {b}" for b in bulan_list])
@@ -178,7 +179,6 @@ if not df.empty:
                     df_sub.index = range(1, len(df_sub) + 1)
                     st.table(df_sub)
         else:
-            # MODE BULANAN biasa
             df_rincian = df_pic[['KPI', 'BOBOT', 'TARGET', 'REAL', 'ACH', 'NILAI']].copy()
             df_rincian.index = range(1, len(df_rincian) + 1)
             st.table(df_rincian)
