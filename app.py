@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
 
 # 1. Konfigurasi Halaman & Gaya Visual
 st.set_page_config(page_title="Annual Recruitment Dashboard", layout="wide")
@@ -31,7 +32,6 @@ def load_data():
         df_raw.columns = range(df_raw.shape[1])
         df_raw[2] = df_raw[2].ffill() # Nama PIC
 
-        # --- PEMETAAN KOORDINAT BULAN (LENGKAP 1 TAHUN) ---
         month_config = {
             'Januari':   {'bobot': 9,   'target': 10,  'real': 11,  'ach': 12,  'nilai': 13},
             'Februari':  {'bobot': 14,  'target': 15,  'real': 16,  'ach': 17,  'nilai': 18},
@@ -68,7 +68,6 @@ def load_data():
 
         df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
 
-        # Pembersihan Angka untuk ACH dan NILAI
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
@@ -78,7 +77,15 @@ def load_data():
                 return 0.0
             
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
-        df['NILAI_NUM'] = df['NILAI'].apply(clean_to_num)
+        
+        # ABAIKAN KPI KOSONG / 0 (Cost Effectiveness milik Claudia & Training Hours pada bulan yang belum dilaksanakan)
+        # Dengan mengubah 0 menjadi NaN, pandas.mean() otomatis HANYA MEMBAGI KPI yang ada datanya
+        mask_zero = (df['ACH_NUM'] == 0) & (
+            (df['KPI'].str.contains('COST EFFECTIVENESS', case=False, na=False)) | 
+            (df['KPI'].str.contains('TRAINING HOURS', case=False, na=False))
+        )
+        df.loc[mask_zero, 'ACH_NUM'] = np.nan
+        
         return df
     except Exception as e:
         st.error(f"Error: {e}")
@@ -112,14 +119,12 @@ if not df.empty:
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_periode}")
         
-        # --- PERHITUNGAN RANKING BERDASARKAN RATA-RATA ACH ---
-        # Claudia (5 KPI) dibagi 5, PIC lain (6 KPI) dibagi 6
+        # Rata-rata ACH murni untuk KPI yang aktif saja
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         
         avg_score = df_rank['ACH_NUM'].mean()
         st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        # Kartu Medali Berdasarkan Rata-rata ACH
         cols = st.columns(min(len(df_rank), 6))
         for i, row in df_rank.iterrows():
             with cols[i % 6]:
@@ -130,7 +135,7 @@ if not df.empty:
                         <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" class="rank-img">
                         <div style="font-weight:bold; font-size:13px; min-height:40px;">{row['NAMA']}</div>
                         <div style="color:#ff7eb9; font-weight:bold; font-size:18px;">{row['ACH_NUM']:.1f}%</div>
-                        <div style="font-size:11px; color:#888;">(Avg ACH)</div>
+                        <div style="font-size:11px; color:#888;">(Avg Active KPIs)</div>
                     </div>
                 """, unsafe_allow_html=True)
         
@@ -139,14 +144,16 @@ if not df.empty:
         
         def custom_label(row):
             val = row['ACH_NUM']
+            if pd.isna(val):
+                return "-"
             return f"{val:.1f}%"
 
         df_filtered['DISPLAY'] = df_filtered.apply(custom_label, axis=1)
         
         if mode_periode == "Juara Triwulan (3 Bulan)":
-            piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='ACH_NUM', aggfunc='mean').fillna(0)
+            piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='ACH_NUM', aggfunc='mean')
             piv = piv.reindex(df_rank['NAMA'])
-            st.dataframe(piv.style.format("{:.1f}%"), use_container_width=True)
+            st.dataframe(piv.style.format(lambda x: "-" if pd.isna(x) else f"{x:.1f}%"), use_container_width=True)
         else:
             piv = df_filtered.pivot_table(index='NAMA', columns='KPI', values='DISPLAY', aggfunc='first').fillna("-")
             piv = piv.reindex(df_rank['NAMA'])
@@ -159,8 +166,7 @@ if not df.empty:
         
         c1, c2 = st.columns([1, 2.5])
         with c1:
-            st.metric("Avg Achievement (ACH)", f"{df_pic['ACH_NUM'].mean():.1f}%")
-            st.metric("Total Nilai", f"{df_pic['NILAI_NUM'].sum():.1f}%")
+            st.metric("Avg Achievement (Active KPIs)", f"{df_pic['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         
         with c2:
