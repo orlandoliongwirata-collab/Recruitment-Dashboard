@@ -31,15 +31,20 @@ def load_data():
         df_raw.columns = range(df_raw.shape[1])
         df_raw[2] = df_raw[2].ffill() # Nama PIC
 
+        # --- PEMETAAN KOORDINAT BULAN (LENGKAP 1 TAHUN) ---
         month_config = {
-            'Januari':  {'bobot': 9,  'target': 10, 'real': 11, 'ach': 12, 'nilai': 13},
-            'Februari': {'bobot': 14, 'target': 15, 'real': 16, 'ach': 17, 'nilai': 18},
-            'Maret':    {'bobot': 19, 'target': 20, 'real': 21, 'ach': 22, 'nilai': 23},
-            'April':    {'bobot': 24, 'target': 25, 'real': 26, 'ach': 27, 'nilai': 28},
-            'Mei':      {'bobot': 29, 'target': 30, 'real': 31, 'ach': 32, 'nilai': 33},
-            'Juni':     {'bobot': 34, 'target': 35, 'real': 36, 'ach': 37, 'nilai': 38},
-            'Juli':     {'bobot': 39, 'target': 40, 'real': 41, 'ach': 42, 'nilai': 43},
-            'Agustus':  {'bobot': 44, 'target': 45, 'real': 46, 'ach': 47, 'nilai': 48}
+            'Januari':   {'bobot': 9,   'target': 10,  'real': 11,  'ach': 12,  'nilai': 13},
+            'Februari':  {'bobot': 14,  'target': 15,  'real': 16,  'ach': 17,  'nilai': 18},
+            'Maret':     {'bobot': 19,  'target': 20,  'real': 21,  'ach': 22,  'nilai': 23},
+            'April':     {'bobot': 24,  'target': 25,  'real': 26,  'ach': 27,  'nilai': 28},
+            'Mei':       {'bobot': 29,  'target': 30,  'real': 31,  'ach': 32,  'nilai': 33},
+            'Juni':      {'bobot': 34,  'target': 35,  'real': 36,  'ach': 37,  'nilai': 38},
+            'Juli':      {'bobot': 39,  'target': 40,  'real': 41,  'ach': 42,  'nilai': 43},
+            'Agustus':   {'bobot': 44,  'target': 45,  'real': 46,  'ach': 47,  'nilai': 48},
+            'September': {'bobot': 49,  'target': 50,  'real': 51,  'ach': 52,  'nilai': 53},
+            'Oktober':   {'bobot': 54,  'target': 55,  'real': 56,  'ach': 57,  'nilai': 58},
+            'November':  {'bobot': 59,  'target': 60,  'real': 61,  'ach': 62,  'nilai': 63},
+            'Desember':  {'bobot': 64,  'target': 65,  'real': 66,  'ach': 67,  'nilai': 68}
         }
 
         all_data = []
@@ -63,13 +68,11 @@ def load_data():
 
         df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
 
-        # --- PERBAIKAN LOGIKA PEMBERSAHAN ANGKA (SUPPORT >100%) ---
+        # Pembersihan Angka ACH (Termasuk persentase > 100%)
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
                 v = float(s)
-                # Jika Google Sheets mengeksport angka persen sebagai desimal (misal 1.2 = 120%), kalikan 100.
-                # Jika sudah berupa angka bulat biasa (misal 120), gunakan langsung nilainya.
                 return v * 100 if v <= 2.5 and v > 0 else v
             except: 
                 return 0.0
@@ -99,10 +102,16 @@ if not df.empty:
 
         st.divider()
         view = st.radio("Tampilan:", ["🌍 Overview Tim", "👤 Detail PIC"])
+        
+        st.divider()
+        if st.button("🔄 Refresh Data Google Sheets"):
+            st.cache_data.clear()
+            st.rerun()
 
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_periode}")
         
+        # Perhitungan Rata-rata Dynamic (Claudia 5 KPI, PIC Lain 6 KPI)
         df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
         avg_score = df_rank['ACH_NUM'].mean()
         
