@@ -68,7 +68,7 @@ def load_data():
 
         df['TRIWULAN'] = df['BULAN_DATA'].apply(get_quarter)
 
-        # Pembersihan Angka ACH (Termasuk persentase > 100%)
+        # Pembersihan Angka untuk ACH dan NILAI
         def clean_to_num(x):
             try:
                 s = str(x).replace('%', '').replace(',', '.').replace('-', '0').replace('Rp', '').strip()
@@ -78,6 +78,7 @@ def load_data():
                 return 0.0
             
         df['ACH_NUM'] = df['ACH'].apply(clean_to_num)
+        df['NILAI_NUM'] = df['NILAI'].apply(clean_to_num)
         return df
     except Exception as e:
         st.error(f"Error: {e}")
@@ -111,34 +112,38 @@ if not df.empty:
     if view == "🌍 Overview Tim":
         st.title(f"🏆 Leaderboard - {sel_periode}")
         
-        # Perhitungan Rata-rata Dynamic (Claudia 5 KPI, PIC Lain 6 KPI)
-        df_rank = df_filtered.groupby('NAMA').agg({'ACH_NUM': 'mean'}).reset_index().sort_values('ACH_NUM', ascending=False).reset_index(drop=True)
+        # Perhitungan Ranking Berdasarkan Kolom NILAI
+        df_rank = df_filtered.groupby('NAMA').agg({
+            'NILAI_NUM': 'sum',
+            'ACH_NUM': 'mean'
+        }).reset_index().sort_values('NILAI_NUM', ascending=False).reset_index(drop=True)
+        
         avg_score = df_rank['ACH_NUM'].mean()
+        st.markdown(f'<div class="avg-banner"><h3>Average Team Achievement</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
         
-        st.markdown(f'<div class="avg-banner"><h3>Average Performance Score</h3><h1>{avg_score:.1f}%</h1></div>', unsafe_allow_html=True)
-        
-        cols = st.columns(min(len(df_rank), 5))
+        # Kartu Medali
+        cols = st.columns(min(len(df_rank), 6))
         for i, row in df_rank.iterrows():
-            with cols[i % 5]:
+            with cols[i % 6]:
                 medali = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"#{i+1}"
                 st.markdown(f"""
                     <div class="rank-card">
                         <div style="font-size:20px;">{medali}</div>
                         <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" class="rank-img">
                         <div style="font-weight:bold; font-size:13px; min-height:40px;">{row['NAMA']}</div>
-                        <div style="color:#ff7eb9; font-weight:bold; font-size:18px;">{row['ACH_NUM']:.1f}%</div>
+                        <div style="color:#ff7eb9; font-weight:bold; font-size:18px;">{row['NILAI_NUM']:.1f}%</div>
+                        <div style="font-size:11px; color:#888;">(Nilai Final)</div>
                     </div>
                 """, unsafe_allow_html=True)
         
         st.divider()
         st.subheader(f"📋 Ringkasan per KPI ({sel_periode})")
         
+        # --- PERBAIKAN FORMAT SATUAN (Service Level -> %) ---
         def custom_label(row):
             kpi, val = str(row['KPI']).upper(), row['ACH_NUM']
-            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT", "TRAINING HOURS"]):
+            if any(x in kpi for x in ["SUCCESS RATE", "QUALITY OF HIRE", "MANPOWER FULFILLMENT", "TRAINING HOURS", "SERVICE LEVEL"]):
                 return f"{val:.1f}%"
-            elif "SERVICE LEVEL" in kpi:
-                return f"{val:.0f} Hari"
             elif "COST EFFECTIVENESS" in kpi:
                 return f"Rp {val:,.0f}"
             else:
@@ -162,7 +167,8 @@ if not df.empty:
         
         c1, c2 = st.columns([1, 2.5])
         with c1:
-            st.metric("Avg Achievement", f"{df_pic['ACH_NUM'].mean():.1f}%")
+            st.metric("Total Nilai", f"{df_pic['NILAI_NUM'].sum():.1f}%")
+            st.metric("Avg Achievement (ACH)", f"{df_pic['ACH_NUM'].mean():.1f}%")
             st.image("https://via.placeholder.com/150")
         
         with c2:
